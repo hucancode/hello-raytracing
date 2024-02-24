@@ -5,11 +5,11 @@ use wgpu::{
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferAddress, BufferBinding,
     BufferBindingType, BufferSize, BufferUsages, Color, CommandEncoderDescriptor, Device,
-    DeviceDescriptor, Features, FragmentState, IndexFormat, Instance, Limits, LoadOp,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PowerPreference, PrimitiveState, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
-    RequestAdapterOptions, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
-    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
+    DeviceDescriptor, FragmentState, IndexFormat, Instance, Limits, LoadOp, MultisampleState,
+    Operations, PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderSource,
+    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureViewDescriptor,
+    VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
@@ -63,19 +63,17 @@ impl Renderer {
         let surface = instance.create_surface(window).unwrap();
         let adapter = instance
             .request_adapter(&RequestAdapterOptions {
-                power_preference: PowerPreference::default(),
-                force_fallback_adapter: false,
                 compatible_surface: Some(&surface),
+                ..Default::default()
             })
             .await
             .expect("Failed to find an appropriate adapter");
         let (device, queue) = adapter
             .request_device(
                 &DeviceDescriptor {
-                    label: None,
-                    required_features: Features::empty(),
                     required_limits: Limits::downlevel_webgl2_defaults()
                         .using_resolution(adapter.limits()),
+                    ..Default::default()
                 },
                 None,
             )
@@ -122,9 +120,8 @@ impl Renderer {
                 ],
             });
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: None,
             bind_group_layouts: &[&bind_group_layout_global_input],
-            push_constant_ranges: &[],
+            ..Default::default()
         });
         let config = surface
             .get_default_config(&adapter, size.width, size.height)
@@ -223,7 +220,6 @@ impl Renderer {
             .create_command_encoder(&CommandEncoderDescriptor { label: None });
         {
             let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: None,
                 color_attachments: &[Some(RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -232,9 +228,7 @@ impl Renderer {
                         store: StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
+                ..Default::default()
             });
             rpass.set_pipeline(&self.render_pipeline);
             rpass.set_bind_group(0, &self.bind_group_global_input, &[]);
