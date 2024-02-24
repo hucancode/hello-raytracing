@@ -5,11 +5,11 @@ use wgpu::{
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferAddress, BufferBinding,
     BufferBindingType, BufferSize, BufferUsages, Color, CommandEncoderDescriptor, Device,
-    DeviceDescriptor, FragmentState, IndexFormat, Instance, Limits, LoadOp, MultisampleState,
-    Operations, PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderSource,
-    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureViewDescriptor,
-    VertexBufferLayout, VertexState, VertexStepMode,
+    DeviceDescriptor, FragmentState, IndexFormat, Instance, LoadOp, MultisampleState, Operations,
+    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
+    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
@@ -46,7 +46,7 @@ pub struct Renderer {
     device: Device,
     surface: Surface<'static>,
     queue: Queue,
-    render_pipeline: wgpu::RenderPipeline,
+    render_pipeline: RenderPipeline,
     config: SurfaceConfiguration,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -69,29 +69,22 @@ impl Renderer {
             .await
             .expect("Failed to find an appropriate adapter");
         let (device, queue) = adapter
-            .request_device(
-                &DeviceDescriptor {
-                    required_limits: Limits::downlevel_webgl2_defaults()
-                        .using_resolution(adapter.limits()),
-                    ..Default::default()
-                },
-                None,
-            )
+            .request_device(&DeviceDescriptor::default(), None)
             .await
             .expect("Failed to create device");
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
             source: ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
         });
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: BufferUsages::VERTEX,
         });
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Index Buffer"),
             contents: bytemuck::cast_slice(&INDICES),
-            usage: wgpu::BufferUsages::INDEX,
+            usage: BufferUsages::INDEX,
         });
         let bind_group_layout_global_input =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
