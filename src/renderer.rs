@@ -126,8 +126,10 @@ impl Renderer {
             bind_group_layouts: &[&bind_group_layout_global_input],
             push_constant_ranges: &[],
         });
-        let swapchain_capabilities = surface.get_capabilities(&adapter);
-        let swapchain_format = swapchain_capabilities.formats[0];
+        let config = surface
+            .get_default_config(&adapter, size.width, size.height)
+            .unwrap();
+        surface.configure(&device, &config);
         let render_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: None,
             layout: Some(&pipeline_layout),
@@ -139,18 +141,13 @@ impl Renderer {
             fragment: Some(FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
-                targets: &[Some(swapchain_format.into())],
+                targets: &[Some(config.format.into())],
             }),
             primitive: PrimitiveState::default(),
             depth_stencil: None,
             multisample: MultisampleState::default(),
             multiview: None,
         });
-        let config = surface
-            .get_default_config(&adapter, size.width, size.height)
-            .unwrap();
-        surface.configure(&device, &config);
-
         let resolution_buffer_size = 2 * size_of::<u32>() as BufferAddress;
         let resolution_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
