@@ -1,27 +1,23 @@
 use bytemuck::{Pod, Zeroable};
-use std::cmp::max;
-use std::sync::Arc;
-use std::{borrow::Cow, mem::size_of};
+use std::{borrow::Cow, cmp::max, mem::size_of, sync::Arc};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    vertex_attr_array, Buffer, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features,
-    FragmentState, IndexFormat, Instance, Limits, LoadOp, MultisampleState, Operations,
-    PipelineLayoutDescriptor, PowerPreference, PrimitiveState, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderSource, StoreOp,
-    Surface, SurfaceConfiguration, TextureViewDescriptor, VertexState,
-};
-use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, BufferAddress, BufferBinding,
-    BufferBindingType, BufferSize, BufferUsages, ShaderStages, VertexBufferLayout, VertexStepMode,
+    vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferAddress, BufferBinding,
+    BufferBindingType, BufferSize, BufferUsages, Color, CommandEncoderDescriptor, Device,
+    DeviceDescriptor, Features, FragmentState, IndexFormat, Instance, Limits, LoadOp,
+    MultisampleState, Operations, PipelineLayoutDescriptor, PowerPreference, PrimitiveState, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
+    RequestAdapterOptions, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
+    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Vertex {
     position: [f32; 4],
 }
-
 impl Vertex {
     pub fn desc() -> VertexBufferLayout<'static> {
         VertexBufferLayout {
@@ -31,7 +27,6 @@ impl Vertex {
         }
     }
 }
-
 const VERTICES: &[Vertex] = &[
     Vertex {
         position: [1.0, 1.0, 0.0, 1.0],
@@ -47,7 +42,6 @@ const VERTICES: &[Vertex] = &[
     },
 ];
 const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
-
 pub struct Renderer {
     device: Device,
     surface: Surface<'static>,
@@ -60,7 +54,6 @@ pub struct Renderer {
     time_buffer: Buffer,
     bind_group_global_input: BindGroup,
 }
-
 impl Renderer {
     pub async fn new(window: Arc<Window>) -> Renderer {
         let mut size = window.inner_size();
