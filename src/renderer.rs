@@ -211,24 +211,23 @@ impl Renderer {
         let mut encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor { label: None });
-        {
-            let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(Color::GREEN),
-                        store: StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            rpass.set_pipeline(&self.render_pipeline);
-            rpass.set_bind_group(0, &self.bind_group_global_input, &[]);
-            rpass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
-            rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            rpass.draw_indexed(0..6, 0, 0..1);
-        }
+        let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Clear(Color::BLACK),
+                    store: StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        rpass.set_pipeline(&self.render_pipeline);
+        rpass.set_bind_group(0, &self.bind_group_global_input, &[]);
+        rpass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
+        rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        rpass.draw_indexed(0..6, 0, 0..1);
+        drop(rpass);
         self.queue.submit(Some(encoder.finish()));
         frame.present();
     }
