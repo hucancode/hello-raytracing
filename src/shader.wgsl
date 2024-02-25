@@ -29,6 +29,7 @@ struct HitRecord {
   normal: vec3f,
   t: f32,
   material: Material,
+  front_face: bool,
 }
 struct Material {
     id: i32,
@@ -82,15 +83,33 @@ fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
   let c = dot(oc, oc) - sphere.radius*sphere.radius;
   let discriminant = b*b - 4*a*c;
   if (discriminant < 0) {
-      return HitRecord(vec3f(0), vec3f(0), -1, sphere.material);
+      return HitRecord(vec3f(0), vec3f(0), -1, sphere.material, false);
   }
   let t = (-b - sqrt(discriminant) ) / (2*a);
   let hit_point = point_on_ray(ray, t);
-  let normal = (hit_point - sphere.center) / sphere.radius;
-  return HitRecord(hit_point, normal, t, sphere.material);
+  var normal = (hit_point - sphere.center) / sphere.radius;
+  let front_face = dot(ray.direction, normal) < 0;
+  if !front_face {
+    normal = -normal;
+  }
+  return HitRecord(hit_point, normal, t, sphere.material, front_face);
 }
 fn reflect(v: vec3f, n: vec3f) -> vec3f {
     return v - 2*dot(v,n)*n;
+}
+fn refract(uv: vec3f, n: vec3f, etai_over_etat: f32) -> vec3f {
+    let cos_theta = min(dot(-uv, n), 1.0);
+    let r_out_perp =  etai_over_etat * (uv + cos_theta*n);
+    let len = length(r_out_perp);
+    let r_out_parallel = -sqrt(abs(1.0 - len*len)) * n;
+    return r_out_perp + r_out_parallel;
+}
+
+fn reflectance(cosine: f32, ref_idx: f32) -> f32 {
+    // Use Schlick's approximation for reflectance.
+    var r0 = (1-ref_idx) / (1+ref_idx);
+    r0 = r0*r0;
+    return r0 + (1-r0)*pow((1 - cosine), 5.0);
 }
 fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
   switch hit.material.id {
@@ -104,13 +123,25 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
       return Ray(hit.point, normalize(direction));
     }
     case MAT_DIELECTRIC: {
-      
+      var ir = hit.material.param1;
+      if hit.front_face {
+        ir = 1.0/ir;
+      }
+      let cos_theta = min(dot(-ray.direction, hit.normal), 1.0);
+      let sin_theta = sqrt(1.0 - cos_theta*cos_theta);
+      let cannot_refract = ir * sin_theta > 1.0;
+      if (cannot_refract || reflectance(cos_theta, ir) > rng_float(state)) {
+          let direction = reflect(ray.direction, hit.normal);
+          return Ray(hit.point, normalize(direction));
+      } else {
+          let direction = refract(ray.direction, hit.normal, ir);
+          return Ray(hit.point, normalize(direction));
+      }
     }
     default: {
-      
+      return Ray(vec3f(0), vec3f(0));
     }
   }
-  return Ray(vec3f(0), vec3f(0));
 }
 
 const MAT_LAMBERTIAN = 1;
@@ -136,9 +167,9 @@ var<private> scene: array<Sphere, OBJECT_COUNT> = array(
     vec3f(-1, 0, -1), 
     0.5,
     Material(
-      MAT_METAL,
-      vec3f(0.9, 0.15, 0.02),
-      0.9,
+      MAT_DIELECTRIC,
+      vec3f(1.0),
+      1.5,
     )
   ),
   Sphere(
@@ -172,7 +203,7 @@ fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   let aspect_ratio = f32(resolution.x) / f32(resolution.y);
   var uv = position.xy / vec2f(f32(resolution.x - 1), f32(resolution.y - 1));
   uv = (2 * uv - vec2(1)) * vec2(aspect_ratio, -1);
-  let direction = vec3(uv, -focus_distance);
+  let direction = normalize(vec3(uv, -focus_distance));
   let ray = Ray(origin, direction);
   var color = vec3f(0);
   var rng_state = u32(position.x)*resolution.y + u32(position.y) * time;
@@ -204,7 +235,8 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
         MAT_METAL,
         vec3f(0.8, 0.6, 0.2),
         0.8,
-      )
+      ),
+      false,
     );
     for (var i = 0; i < OBJECT_COUNT; i += 1) {
       let hit = intersect_sphere(current_ray, scene[i]);
