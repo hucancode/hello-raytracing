@@ -9,8 +9,8 @@ const end_color = vec4(0.0, 0.1, 0.3, 1.0);
 var<uniform> resolution: vec2u;
 @group(0) @binding(1)
 var<uniform> time: u32;
-// @group(0) @binding(2)
-// var<storage, read_write> image: array<array<array<f32, 3>>>;
+@group(0) @binding(2)
+var<storage, read_write> image: array<vec4f>;
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
   return position;
@@ -39,11 +39,6 @@ fn point_on_ray(ray: Ray, t: f32) -> vec3f {
   return ray.origin + t * ray.direction;
 }
 
-fn sky_color(ray: Ray) -> vec4f {
-  let t = 0.5 * (normalize(ray.direction).y + 1);
-  return (1 - t) * vec4f(1) + t * vec4f(0.3, 0.5, 1.0, 1.0);
-}
-
 fn pcg3d(seed: vec3u) -> vec3u {
     var v = seed * 1664525u + 1013904223u;
     v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y;
@@ -55,7 +50,7 @@ fn pcg3df(seed: vec3f) -> vec3f {
   return vec3f(pcg3d(vec3u(seed)));
 }
 fn rand11(seed: f32) -> f32 {
-  return (sin(seed*0.876218)+cos(seed*0.22443)) * 43758.5453123;
+  return sin(seed) * 43758.5453123;
 }
 fn rand22(seed: vec2f) -> vec2f {
   return vec2f(rand11(seed.x), rand11(seed.y));
@@ -86,7 +81,9 @@ fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
     let normal = (hit_point - sphere.center) / sphere.radius;
     return HitRecord(hit_point, normal, t);
 }
-const SAMPLE_COUNT = 20;
+
+const RENDERED_FRAME = 500;
+const SAMPLE_PER_FRAME = 5;
 const BOUNCE_MAX = 10;
 const LIGHT_COUNT = 1;
 
@@ -107,10 +104,15 @@ fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   let direction = vec3(uv, -focus_distance);
   let ray = Ray(origin, direction);
   var ret = vec3f(0);
-  for (var i = 0; i < SAMPLE_COUNT; i += 1) {
+  for (var i = 0; i < SAMPLE_PER_FRAME; i += 1) {
     ret += trace(ray, f32(i));
   }
-  return vec4f(ret / f32(SAMPLE_COUNT), 1.0);
+  let color = vec4f(ret / f32(SAMPLE_PER_FRAME), 1.0);
+  let x = u32(position.x);
+  let y = u32(position.y);
+  let i = x * resolution.y + y;
+  image[i] = mix(image[i], color, 1.0/f32(RENDERED_FRAME+1));
+  return image[i];
 }
 
 fn trace(ray: Ray, sample_idx: f32) -> vec3f {
@@ -128,7 +130,7 @@ fn trace(ray: Ray, sample_idx: f32) -> vec3f {
     if abs(closest_hit.t - FLT_MAX) < EPSILON {
       break;
     }
-    let seed = vec3f(sample_idx+f32(time))+ray.direction + ray.origin;
+    let seed = vec3f(sample_idx + f32(time), sample_idx + sin(f32(time)), sample_idx + cos(f32(time)))+ray.direction + ray.origin;
     let direction = random_on_hemisphere(seed, closest_hit.normal);
     let origin = closest_hit.point;
     current_ray = Ray(origin, direction);

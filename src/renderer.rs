@@ -5,11 +5,11 @@ use wgpu::{
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferAddress, BufferBinding,
     BufferBindingType, BufferSize, BufferUsages, Color, CommandEncoderDescriptor, Device,
-    DeviceDescriptor, FragmentState, IndexFormat, Instance, LoadOp, MultisampleState, Operations,
-    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
-    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
+    DeviceDescriptor, Features, FragmentState, IndexFormat, Instance, Limits, LoadOp,
+    MultisampleState, Operations, PipelineLayoutDescriptor, PrimitiveState, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface,
+    SurfaceConfiguration, TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
@@ -52,6 +52,7 @@ pub struct Renderer {
     index_buffer: Buffer,
     resolution_buffer: Buffer,
     time_buffer: Buffer,
+    image_buffer: Buffer,
     bind_group_global_input: BindGroup,
 }
 impl Renderer {
@@ -68,8 +69,17 @@ impl Renderer {
             })
             .await
             .expect("Failed to find an appropriate adapter");
+        let mut limits = Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        limits.max_storage_buffer_binding_size = 512 * 1024 * 1024;
+        limits.max_storage_buffers_per_shader_stage = 4;
         let (device, queue) = adapter
-            .request_device(&DeviceDescriptor::default(), None)
+            .request_device(
+                &DeviceDescriptor {
+                    required_limits: limits,
+                    ..Default::default()
+                },
+                None,
+            )
             .await
             .expect("Failed to create device");
         let shader = device.create_shader_module(ShaderModuleDescriptor {
@@ -86,6 +96,10 @@ impl Renderer {
             contents: bytemuck::cast_slice(&INDICES),
             usage: BufferUsages::INDEX,
         });
+        let resolution_buffer_size = BufferSize::new(2 * size_of::<u32>() as u64);
+        let time_buffer_size = BufferSize::new(size_of::<u32>() as u64);
+        let image_buffer_size_int = 4 * size.width as u64 * size.height as u64;
+        let image_buffer_size = BufferSize::new(image_buffer_size_int * size_of::<f32>() as u64);
         let bind_group_layout_global_input =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: None,
@@ -96,7 +110,7 @@ impl Renderer {
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: BufferSize::new(2 * size_of::<u32>() as u64),
+                            min_binding_size: resolution_buffer_size,
                         },
                         count: None,
                     },
@@ -106,7 +120,17 @@ impl Renderer {
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: BufferSize::new(size_of::<u32>() as u64),
+                            min_binding_size: time_buffer_size,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 2, // image data
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: image_buffer_size,
                         },
                         count: None,
                     },
@@ -138,17 +162,21 @@ impl Renderer {
             multisample: MultisampleState::default(),
             multiview: None,
         });
-        let resolution_buffer_size = 2 * size_of::<u32>() as BufferAddress;
         let resolution_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(&[size.width, size.height]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
-        let time_buffer_size = size_of::<u32>() as BufferAddress;
         let time_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::bytes_of(&[0u32]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+        let image_data = vec![0f32; image_buffer_size_int as usize];
+        let image_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            contents: bytemuck::cast_slice(image_data.as_slice()),
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            label: None,
         });
         let bind_group_global_input = device.create_bind_group(&BindGroupDescriptor {
             layout: &bind_group_layout_global_input,
@@ -158,7 +186,7 @@ impl Renderer {
                     resource: BindingResource::Buffer(BufferBinding {
                         buffer: &resolution_buffer,
                         offset: 0,
-                        size: BufferSize::new(resolution_buffer_size),
+                        size: resolution_buffer_size,
                     }),
                 },
                 BindGroupEntry {
@@ -166,7 +194,15 @@ impl Renderer {
                     resource: BindingResource::Buffer(BufferBinding {
                         buffer: &time_buffer,
                         offset: 0,
-                        size: BufferSize::new(time_buffer_size),
+                        size: time_buffer_size,
+                    }),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::Buffer(BufferBinding {
+                        buffer: &image_buffer,
+                        offset: 0,
+                        size: image_buffer_size,
                     }),
                 },
             ],
@@ -182,6 +218,7 @@ impl Renderer {
             index_buffer,
             resolution_buffer,
             time_buffer,
+            image_buffer,
             bind_group_global_input,
         }
     }
@@ -195,6 +232,13 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&[width, height]),
         );
+        let image_buffer_size_int = 4 * width * height;
+        let image_data = vec![0f32; image_buffer_size_int as usize];
+        self.image_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
+            contents: bytemuck::cast_slice(image_data.as_slice()),
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            label: None,
+        });
     }
 
     pub fn set_time(&mut self, time: u32) {
