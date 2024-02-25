@@ -10,7 +10,7 @@ var<uniform> resolution: vec2u;
 @group(0) @binding(1)
 var<uniform> time: u32;
 @group(0) @binding(2)
-var<storage, read_write> image: array<vec4f>;
+var<storage, read_write> image: array<f32>;
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
   return position;
@@ -39,28 +39,15 @@ fn point_on_ray(ray: Ray, t: f32) -> vec3f {
   return ray.origin + t * ray.direction;
 }
 
-fn pcg3d(seed: vec3u) -> vec3u {
-    var v = seed * 1664525u + 1013904223u;
-    v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y;
-    v ^= v >> vec3u(16);
-    v.x += v.y*v.z; v.y += v.z*v.x; v.z += v.x*v.y;
-    return v;
-}
-fn pcg3df(seed: vec3f) -> vec3f {
-  return vec3f(pcg3d(vec3u(seed)));
-}
-fn rand11(seed: f32) -> f32 {
+fn rand1(seed: f32) -> f32 {
   return sin(seed) * 43758.5453123;
 }
-fn rand22(seed: vec2f) -> vec2f {
-  return vec2f(rand11(seed.x), rand11(seed.y));
-}
-fn rand33(seed: vec3f) -> vec3f {
-  return vec3f(rand11(seed.x), rand11(seed.y), rand11(seed.z));
+fn rand3(seed: vec3f) -> vec3f {
+  return vec3f(rand1(seed.x), rand1(seed.y), rand1(seed.z));
 }
 fn random_on_hemisphere(seed: vec3f, normal: vec3f) -> vec3f {
   let t = f32(time);
-  let v = normalize(rand33(seed));
+  let v = normalize(rand3(seed));
   if(dot(v, normal) > 0) {
     return v;
   }
@@ -82,37 +69,40 @@ fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
     return HitRecord(hit_point, normal, t);
 }
 
-const RENDERED_FRAME = 500;
-const SAMPLE_PER_FRAME = 5;
-const BOUNCE_MAX = 10;
+const RENDERED_FRAME = 200;
+const SAMPLE_PER_FRAME = 10;
+const BOUNCE_MAX = 20;
 const LIGHT_COUNT = 1;
-
-const OBJECT_COUNT = 2;
+const OBJECT_COUNT = 4;
 var<private> scene: array<Sphere, OBJECT_COUNT> = array(
   Sphere(vec3f(0, -10.5, -1), 10),
   Sphere(vec3f(0, 0, -1), 0.5),
+  Sphere(vec3f(0.5, -0.3, -0.5), 0.1),
+  Sphere(vec3f(-0.5, 0.1, -0.5), 0.1),
 );
 
 @fragment
 fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   let origin = vec3f(0);
-  let focus_distance = 1f;
+  let focus_distance = 0.8f;
   let aspect_ratio = f32(resolution.x) / f32(resolution.y);
   var uv = position.xy / vec2f(f32(resolution.x - 1), f32(resolution.y - 1));
   uv = (2 * uv - vec2(1)) * vec2(aspect_ratio, -1);
-
   let direction = vec3(uv, -focus_distance);
   let ray = Ray(origin, direction);
-  var ret = vec3f(0);
+  var color = vec3f(0);
   for (var i = 0; i < SAMPLE_PER_FRAME; i += 1) {
-    ret += trace(ray, f32(i));
+    color += trace(ray, f32(i))/f32(SAMPLE_PER_FRAME);
   }
-  let color = vec4f(ret / f32(SAMPLE_PER_FRAME), 1.0);
   let x = u32(position.x);
   let y = u32(position.y);
-  let i = x * resolution.y + y;
-  image[i] = mix(image[i], color, 1.0/f32(RENDERED_FRAME+1));
-  return image[i];
+  let i = (x * resolution.y + y)*3;
+  let oldColor = vec3f(image[i], image[i+1], image[i+2]);
+  let newColor = mix(oldColor, color, 1.0/f32(RENDERED_FRAME+1));
+  image[i] = newColor.r;
+  image[i+1] = newColor.g;
+  image[i+2] = newColor.b;
+  return vec4f(newColor, 1.0);
 }
 
 fn trace(ray: Ray, sample_idx: f32) -> vec3f {
@@ -130,7 +120,7 @@ fn trace(ray: Ray, sample_idx: f32) -> vec3f {
     if abs(closest_hit.t - FLT_MAX) < EPSILON {
       break;
     }
-    let seed = vec3f(sample_idx + f32(time), sample_idx + sin(f32(time)), sample_idx + cos(f32(time)))+ray.direction + ray.origin;
+    let seed = vec3f(sample_idx * f32(time), sample_idx + sin(f32(time)), sample_idx + cos(f32(time)));
     let direction = random_on_hemisphere(seed, closest_hit.normal);
     let origin = closest_hit.point;
     current_ray = Ray(origin, direction);

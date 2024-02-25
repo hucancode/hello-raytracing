@@ -5,11 +5,11 @@ use wgpu::{
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferAddress, BufferBinding,
     BufferBindingType, BufferSize, BufferUsages, Color, CommandEncoderDescriptor, Device,
-    DeviceDescriptor, Features, FragmentState, IndexFormat, Instance, Limits, LoadOp,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PrimitiveState, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface,
-    SurfaceConfiguration, TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
+    DeviceDescriptor, FragmentState, IndexFormat, Instance, Limits, LoadOp, MultisampleState,
+    Operations, PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
+    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
@@ -70,7 +70,9 @@ impl Renderer {
             .await
             .expect("Failed to find an appropriate adapter");
         let mut limits = Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        limits.max_storage_buffer_binding_size = 512 * 1024 * 1024;
+        let max_storage_buffer_size = 128 * 1024 * 1024;
+        limits.max_buffer_size = max(limits.max_buffer_size, max_storage_buffer_size as u64);
+        limits.max_storage_buffer_binding_size = max_storage_buffer_size;
         limits.max_storage_buffers_per_shader_stage = 4;
         let (device, queue) = adapter
             .request_device(
@@ -98,8 +100,8 @@ impl Renderer {
         });
         let resolution_buffer_size = BufferSize::new(2 * size_of::<u32>() as u64);
         let time_buffer_size = BufferSize::new(size_of::<u32>() as u64);
-        let image_buffer_size_int = 4 * size.width as u64 * size.height as u64;
-        let image_buffer_size = BufferSize::new(image_buffer_size_int * size_of::<f32>() as u64);
+        let image_buffer_size_int = max_storage_buffer_size / size_of::<f32>() as u32;
+        let image_buffer_size = BufferSize::new(image_buffer_size_int as u64);
         let bind_group_layout_global_input =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: None,
@@ -232,13 +234,13 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&[width, height]),
         );
-        let image_buffer_size_int = 4 * width * height;
+        let image_buffer_size_int = 3 * width * height;
         let image_data = vec![0f32; image_buffer_size_int as usize];
-        self.image_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
-            contents: bytemuck::cast_slice(image_data.as_slice()),
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            label: None,
-        });
+        self.queue.write_buffer(
+            &self.image_buffer,
+            0,
+            bytemuck::cast_slice(image_data.as_slice()),
+        );
     }
 
     pub fn set_time(&mut self, time: u32) {
