@@ -1,16 +1,10 @@
-const PI = 3.141592653589793;
-const PI2 = PI*2;
-const EPSILON = 0.000001;
-const FLT_MAX = 3.40282e+38;
-const start_color = vec4(0.4, 0.7, 1.0, 1.0);
-const end_color = vec4(0.0, 0.1, 0.3, 1.0);
-
 @group(0) @binding(0)
 var<uniform> resolution: vec2u;
 @group(0) @binding(1)
 var<uniform> time: u32;
 @group(0) @binding(2)
 var<storage, read_write> image: array<f32>;
+
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
   return position;
@@ -35,19 +29,35 @@ struct HitRecord {
   t: f32,
 }
 
+const PI = 3.141592653589793;
+const PI2 = PI*2;
+const EPSILON = 0.000001;
+const FLT_MAX = 3.40282e+38;
+const start_color = vec4(0.4, 0.7, 1.0, 1.0);
+const end_color = vec4(0.0, 0.1, 0.3, 1.0);
+
+fn rng_int(state: ptr<function, u32>) {
+    // PCG random number generator
+    // Based on https://www.shadertoy.com/view/XlGcRh
+    let oldState = *state + 747796405u + 2891336453u;
+    let word = ((oldState >> ((oldState >> 28u) + 4u)) ^ oldState) * 277803737u;
+    *state = (word >> 22u) ^ word;
+}
+fn rng_float(state: ptr<function, u32>) -> f32 {
+    rng_int(state);
+    return f32(*state) / f32(0xffffffffu);
+}
+
+fn rng_vec(state: ptr<function, u32>) -> vec3f {
+    return vec3f(rng_float(state), rng_float(state), rng_float(state));
+}
+
 fn point_on_ray(ray: Ray, t: f32) -> vec3f {
   return ray.origin + t * ray.direction;
 }
-
-fn rand1(seed: f32) -> f32 {
-  return sin(seed) * 43758.5453123;
-}
-fn rand3(seed: vec3f) -> vec3f {
-  return vec3f(rand1(seed.x), rand1(seed.y), rand1(seed.z));
-}
-fn random_on_hemisphere(seed: vec3f, normal: vec3f) -> vec3f {
+fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
   let t = f32(time);
-  let v = normalize(rand3(seed));
+  let v = normalize(rng_vec(state));
   if(dot(v, normal) > 0) {
     return v;
   }
@@ -55,23 +65,23 @@ fn random_on_hemisphere(seed: vec3f, normal: vec3f) -> vec3f {
 }
 
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
-    let oc = ray.origin - sphere.center;
-    let a = dot(ray.direction, ray.direction);
-    let b = 2 * dot(oc, ray.direction);
-    let c = dot(oc, oc) - sphere.radius*sphere.radius;
-    let discriminant = b*b - 4*a*c;
-    if (discriminant < 0) {
-        return HitRecord(vec3f(0), vec3f(0), -1);
-    }
-    let t = (-b - sqrt(discriminant) ) / (2*a);
-    let hit_point = point_on_ray(ray, t);
-    let normal = (hit_point - sphere.center) / sphere.radius;
-    return HitRecord(hit_point, normal, t);
+  let oc = ray.origin - sphere.center;
+  let a = dot(ray.direction, ray.direction);
+  let b = 2 * dot(oc, ray.direction);
+  let c = dot(oc, oc) - sphere.radius*sphere.radius;
+  let discriminant = b*b - 4*a*c;
+  if (discriminant < 0) {
+      return HitRecord(vec3f(0), vec3f(0), -1);
+  }
+  let t = (-b - sqrt(discriminant) ) / (2*a);
+  let hit_point = point_on_ray(ray, t);
+  let normal = (hit_point - sphere.center) / sphere.radius;
+  return HitRecord(hit_point, normal, t);
 }
 
 const RENDERED_FRAME = 200;
 const SAMPLE_PER_FRAME = 10;
-const BOUNCE_MAX = 20;
+const BOUNCE_MAX = 10;
 const LIGHT_COUNT = 1;
 const OBJECT_COUNT = 4;
 var<private> scene: array<Sphere, OBJECT_COUNT> = array(
@@ -91,8 +101,9 @@ fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   let direction = vec3(uv, -focus_distance);
   let ray = Ray(origin, direction);
   var color = vec3f(0);
+  var rng_state = time;
   for (var i = 0; i < SAMPLE_PER_FRAME; i += 1) {
-    color += trace(ray, f32(i))/f32(SAMPLE_PER_FRAME);
+    color += trace(ray, &rng_state)/f32(SAMPLE_PER_FRAME);
   }
   let x = u32(position.x);
   let y = u32(position.y);
@@ -105,7 +116,7 @@ fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   return vec4f(newColor, 1.0);
 }
 
-fn trace(ray: Ray, sample_idx: f32) -> vec3f {
+fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
   var ret = vec4f(0);
   var weight = 1.0;
   var current_ray = ray;
@@ -120,8 +131,7 @@ fn trace(ray: Ray, sample_idx: f32) -> vec3f {
     if abs(closest_hit.t - FLT_MAX) < EPSILON {
       break;
     }
-    let seed = vec3f(sample_idx * f32(time), sample_idx + sin(f32(time)), sample_idx + cos(f32(time)));
-    let direction = random_on_hemisphere(seed, closest_hit.normal);
+    let direction = random_on_hemisphere(state, closest_hit.normal);
     let origin = closest_hit.point;
     current_ray = Ray(origin, direction);
     weight *= 0.5;
