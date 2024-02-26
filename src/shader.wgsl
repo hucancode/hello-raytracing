@@ -1,8 +1,10 @@
 @group(0) @binding(0)
 var<uniform> resolution: vec2u;
 @group(0) @binding(1)
-var<uniform> time: u32;
+var<uniform> frame_count: u32;
 @group(0) @binding(2)
+var<uniform> time: u32;
+@group(0) @binding(3)
 var<storage, read_write> image: array<f32>;
 
 @vertex
@@ -146,12 +148,51 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
   }
 }
 
+fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
+  var ret = vec4f(0);
+  var attenuation = vec3f(1);
+  var current_ray = ray;
+  var first_hit = true;
+  for(var b = 0;b < BOUNCE_MAX; b++) {
+    var closest_hit = HitRecord(
+      vec3f(0), 
+      vec3f(0), 
+      FLT_MAX, 
+      Material(
+        MAT_METAL,
+        vec3f(0.8, 0.6, 0.2),
+        0.8,
+      ),
+      false,
+    );
+    for (var i = 0; i < OBJECT_COUNT; i += 1) {
+      let hit = intersect_sphere(current_ray, scene[i]);
+      if hit.t > 0 && hit.t < closest_hit.t {
+        closest_hit = hit;
+      }
+    }
+    if abs(closest_hit.t - FLT_MAX) < EPSILON {
+      break;
+    }
+    current_ray = scatter(state, current_ray, closest_hit);
+    if first_hit {
+      attenuation = closest_hit.material.albedo;
+      first_hit = false;
+    } else {
+      attenuation *= closest_hit.material.albedo;
+    }
+  }
+  let x = ray.direction.y*0.5 + 0.5;
+  let sky = mix(vec3f(1.0), vec3f(0.5,0.7,1.0), x);
+  return attenuation * sky;
+}
+
 const MAT_LAMBERTIAN = 1;
 const MAT_METAL = 2;
 const MAT_DIELECTRIC = 3;
 
-const RENDERED_FRAME = 20;
-const SAMPLE_PER_FRAME = 5;
+const SAMPLE_FRAME = 30;
+const SAMPLE_PER_FRAME = 3;
 const BOUNCE_MAX = 20;
 const LIGHT_COUNT = 1;
 const OBJECT_COUNT = 4;
@@ -194,13 +235,13 @@ var<private> scene: array<Sphere, OBJECT_COUNT> = array(
   ),
 );
 @fragment
-fn test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
-  var state = u32(position.x)*resolution.y + u32(position.y);
-  return vec4f(rng_vec3(&state), 1.0);
+fn fs_main_test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  var rng_state = (u32(position.x)*resolution.y + u32(position.y)) * time;
+  return vec4f(rng_vec3(&rng_state), 1.0);
 }
 @fragment
 fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
-  var rng_state = u32(position.x)*resolution.y + u32(position.y) * time;
+  var rng_state = (u32(position.x)*resolution.y + u32(position.y)) * time;
   let origin = vec3f(0);
   let focus_distance = 0.8f;
   let aspect_ratio = f32(resolution.x) / f32(resolution.y);
@@ -217,48 +258,9 @@ fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   let y = u32(position.y);
   let i = (x * resolution.y + y)*3;
   let oldColor = vec3f(image[i], image[i+1], image[i+2]);
-  let newColor = mix(oldColor, color, 1.0/f32(RENDERED_FRAME+1));
+  let newColor = mix(oldColor, color, 1.0/(min(f32(frame_count), f32(SAMPLE_FRAME))+1));
   image[i] = newColor.r;
   image[i+1] = newColor.g;
   image[i+2] = newColor.b;
   return vec4f(newColor, 1.0);
-}
-
-fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
-  var ret = vec4f(0);
-  var attenuation = vec3f(1);
-  var current_ray = ray;
-  var first_hit = true;
-  for(var b = 0;b < BOUNCE_MAX; b++) {
-    var closest_hit = HitRecord(
-      vec3f(0), 
-      vec3f(0), 
-      FLT_MAX, 
-      Material(
-        MAT_METAL,
-        vec3f(0.8, 0.6, 0.2),
-        0.8,
-      ),
-      false,
-    );
-    for (var i = 0; i < OBJECT_COUNT; i += 1) {
-      let hit = intersect_sphere(current_ray, scene[i]);
-      if hit.t > 0 && hit.t < closest_hit.t {
-        closest_hit = hit;
-      }
-    }
-    if abs(closest_hit.t - FLT_MAX) < EPSILON {
-      break;
-    }
-    current_ray = scatter(state, current_ray, closest_hit);
-    if first_hit {
-      attenuation = closest_hit.material.albedo;
-      first_hit = false;
-    } else {
-      attenuation *= closest_hit.material.albedo;
-    }
-  }
-  let x = ray.direction.y*0.5 + 0.5;
-  let sky = mix(vec3f(1.0), vec3f(0.5,0.7,1.0), x);
-  return attenuation * sky;
 }

@@ -51,9 +51,11 @@ pub struct Renderer {
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     resolution_buffer: Buffer,
+    frame_count_buffer: Buffer,
     time_buffer: Buffer,
     image_buffer: Buffer,
     bind_group_global_input: BindGroup,
+    frame_count: u32,
 }
 impl Renderer {
     pub async fn new(window: Arc<Window>) -> Renderer {
@@ -99,6 +101,7 @@ impl Renderer {
             usage: BufferUsages::INDEX,
         });
         let resolution_buffer_size = BufferSize::new(2 * size_of::<u32>() as u64);
+        let frame_count_buffer_size = BufferSize::new(size_of::<u32>() as u64);
         let time_buffer_size = BufferSize::new(size_of::<u32>() as u64);
         let image_buffer_size_int = max_storage_buffer_size / size_of::<f32>() as u32;
         let image_buffer_size = BufferSize::new(image_buffer_size_int as u64);
@@ -117,7 +120,7 @@ impl Renderer {
                         count: None,
                     },
                     BindGroupLayoutEntry {
-                        binding: 1, // time
+                        binding: 1, // frame count
                         visibility: ShaderStages::VERTEX_FRAGMENT,
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
@@ -127,7 +130,17 @@ impl Renderer {
                         count: None,
                     },
                     BindGroupLayoutEntry {
-                        binding: 2, // image data
+                        binding: 2, // time
+                        visibility: ShaderStages::VERTEX_FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: time_buffer_size,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 3, // image data
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Storage { read_only: false },
@@ -169,6 +182,11 @@ impl Renderer {
             contents: bytemuck::cast_slice(&[size.width, size.height]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
+        let frame_count_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::bytes_of(&[0u32]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
         let time_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::bytes_of(&[0u32]),
@@ -194,13 +212,21 @@ impl Renderer {
                 BindGroupEntry {
                     binding: 1,
                     resource: BindingResource::Buffer(BufferBinding {
+                        buffer: &frame_count_buffer,
+                        offset: 0,
+                        size: frame_count_buffer_size,
+                    }),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::Buffer(BufferBinding {
                         buffer: &time_buffer,
                         offset: 0,
                         size: time_buffer_size,
                     }),
                 },
                 BindGroupEntry {
-                    binding: 2,
+                    binding: 3,
                     resource: BindingResource::Buffer(BufferBinding {
                         buffer: &image_buffer,
                         offset: 0,
@@ -219,9 +245,11 @@ impl Renderer {
             vertex_buffer,
             index_buffer,
             resolution_buffer,
+            frame_count_buffer,
             time_buffer,
             image_buffer,
             bind_group_global_input,
+            frame_count: 0,
         }
     }
 
@@ -241,6 +269,7 @@ impl Renderer {
             0,
             bytemuck::cast_slice(image_data.as_slice()),
         );
+        self.frame_count = 0;
     }
 
     pub fn set_time(&mut self, time: u32) {
@@ -249,6 +278,8 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) {
+        self.queue
+            .write_buffer(&self.frame_count_buffer, 0, bytemuck::bytes_of(&[self.frame_count]));
         let frame = self
             .surface
             .get_current_texture()
@@ -276,5 +307,6 @@ impl Renderer {
         drop(rpass);
         self.queue.submit(Some(encoder.finish()));
         frame.present();
+        self.frame_count += 1;
     }
 }
