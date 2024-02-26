@@ -16,14 +16,18 @@ const PI = 3.141592653589793;
 const PI2 = PI*2;
 const EPSILON = 0.000001;
 const FLT_MAX = 3.40282e+38;
-const MAT_LAMBERTIAN = 1;
-const MAT_METAL = 2;
-const MAT_DIELECTRIC = 3;
-
+const MAT_LAMBERTIAN = 1u;
+const MAT_METAL = 2u;
+const MAT_DIELECTRIC = 3u;
+const SKY = vec3f(0.54, 0.86, 0.92);
+const BLUE = vec3f(0.54, 0.7, 0.98);
 struct Camera {
   eye: vec3f,
+  _padding1: f32,
   direction: vec3f,
+  _padding2: f32,
   up: vec3f,
+  _padding3: f32,
   right: vec3f,
   focus_distance: f32,
 }
@@ -37,9 +41,9 @@ struct Light {
   strength: f32,
 }
 struct Sphere {
-  center: vec3f,
-  radius: f32,
+  center_and_radius: vec4f,
   material: Material,
+  // _padding: vec4f,
 }
 struct HitRecord {
   point: vec3f,
@@ -49,9 +53,9 @@ struct HitRecord {
   front_face: bool,
 }
 struct Material {
-    id: i32,
-    albedo: vec3f,
-    param1: f32,
+    albedo: vec4f,
+    id: u32,
+    params: vec3f,
 }
 
 fn rng_int(state: ptr<function, u32>) {
@@ -95,17 +99,19 @@ fn make_ray(uv: vec2f) -> Ray {
     return Ray(origin, direction);
 }
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
-  let oc = ray.origin - sphere.center;
+  let center = sphere.center_and_radius.xyz;
+  let radius = sphere.center_and_radius.w;
+  let oc = ray.origin - center;
   let a = dot(ray.direction, ray.direction);
   let b = 2 * dot(oc, ray.direction);
-  let c = dot(oc, oc) - sphere.radius*sphere.radius;
+  let c = dot(oc, oc) - radius*radius;
   let discriminant = b*b - 4*a*c;
   if (discriminant < 0) {
       return HitRecord(vec3f(), vec3f(), -1, sphere.material, false);
   }
   let t = (-b - sqrt(discriminant) ) / (2*a);
   let hit_point = point_on_ray(ray, t);
-  var normal = (hit_point - sphere.center) / sphere.radius;
+  var normal = (hit_point - center) / radius;
   let front_face = dot(ray.direction, normal) < 0;
   if !front_face {
     normal = -normal;
@@ -135,12 +141,12 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
       return Ray(hit.point, direction);
     }
     case MAT_METAL: {
-      let fuzziness = hit.material.param1;
+      let fuzziness = hit.material.params.x;
       let direction = reflect(normalize(ray.direction), hit.normal) + fuzziness * random_on_hemisphere(state, hit.normal);
       return Ray(hit.point, normalize(direction));
     }
     case MAT_DIELECTRIC: {
-      var ir = hit.material.param1;
+      var ir = hit.material.params.x;
       if hit.front_face {
         ir = 1.0/ir;
       }
@@ -156,7 +162,21 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
       }
     }
     default: {
-      return Ray(vec3f(), vec3f(0));
+      var ir = hit.material.params.x;
+      if hit.front_face {
+        ir = 1.0/ir;
+      }
+      let cos_theta = min(dot(-ray.direction, hit.normal), 1.0);
+      let sin_theta = sqrt(1.0 - cos_theta*cos_theta);
+      let cannot_refract = ir * sin_theta > 1.0;
+      if (cannot_refract || reflectance(cos_theta, ir) > fract(rng_float(state))) {
+          let direction = reflect(ray.direction, hit.normal);
+          return Ray(hit.point, normalize(direction));
+      } else {
+          let direction = refract(ray.direction, hit.normal, ir);
+          return Ray(hit.point, normalize(direction));
+      }
+      // return Ray(vec3f(), vec3f(0));
     }
   }
 }
@@ -171,14 +191,15 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
       vec3f(), 
       FLT_MAX, 
       Material(
+        vec4f(),
         MAT_METAL,
         vec3f(),
-        0,
       ),
       false,
     );
-    for (var i = 0; i < OBJECT_COUNT; i += 1) {
-      let hit = intersect_sphere(current_ray, scene[i]);
+    for (var i = 0u; i < arrayLength(&scene); i += 1u) {
+      let obj = scene[i];
+      let hit = intersect_sphere(current_ray, obj);
       if hit.t > 0 && hit.t < closest_hit.t {
         closest_hit = hit;
       }
@@ -188,14 +209,14 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
     }
     current_ray = scatter(state, current_ray, closest_hit);
     if first_hit {
-      attenuation = closest_hit.material.albedo;
+      attenuation = closest_hit.material.albedo.rgb;
       first_hit = false;
     } else {
-      attenuation *= closest_hit.material.albedo;
+      attenuation *= closest_hit.material.albedo.rgb;
     }
   }
   let x = ray.direction.y*0.5 + 0.5;
-  let sky = mix(vec3f(1.0), vec3f(0.5,0.7,1.0), x);
+  let sky = mix(SKY, BLUE, x);
   return attenuation * sky;
 }
 
@@ -203,51 +224,11 @@ const SAMPLE_FRAME = 120;
 const SAMPLE_PER_FRAME = 1;
 const BOUNCE_MAX = 20;
 const OBJECT_COUNT = 4;
-var<private> scene: array<Sphere, OBJECT_COUNT> = array(
-  Sphere(
-    vec3f(0, -100.5, -1), 
-    100, 
-    Material(
-      MAT_LAMBERTIAN,
-      vec3f(0.8, 0.8, 0.0),
-      0.0,
-    )
-  ),
-  Sphere(
-    vec3f(-1, 0, -1), 
-    0.5,
-    Material(
-      MAT_DIELECTRIC,
-      vec3f(1.0),
-      1.5,
-    )
-  ),
-  Sphere(
-    vec3f(0, 0, -1), 
-    0.5,
-    Material(
-      MAT_LAMBERTIAN,
-      vec3f(0.2, 0.8, 0.2),
-      0.0,
-    )
-  ),
-  Sphere(
-    vec3f(1, 0, -1), 
-    0.5,
-    Material(
-      MAT_METAL,
-      vec3f(0.1, 0.4, 0.9),
-      0.1,
-    )
-  ),
-);
-var<private> camera: Camera = Camera(
-  vec3f(0,5,10),   // eye
-  vec3f(0, -0.274721, -0.961524),  // direction
-  vec3f(0, 0.961524, -0.274721),   // up
-  vec3f(1,0,0),   // right
-  1.2,            // focus length
-);
+
+@group(1) @binding(0) 
+var<storage, read> scene: array<Sphere>;
+@group(1) @binding(1) 
+var<uniform> camera: Camera;
 
 @fragment
 fn fs_main_test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
