@@ -20,6 +20,13 @@ const MAT_LAMBERTIAN = 1;
 const MAT_METAL = 2;
 const MAT_DIELECTRIC = 3;
 
+struct Camera {
+  eye: vec3f,
+  direction: vec3f,
+  up: vec3f,
+  right: vec3f,
+  focus_distance: f32,
+}
 struct Ray {
   origin: vec3f,
   direction: vec3f,
@@ -77,6 +84,15 @@ fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
     return v;
   }
   return -v;
+}
+fn make_ray(uv: vec2f) -> Ray {
+    let x = camera.right*uv.x;
+    let y = camera.up*uv.y;
+    let z = camera.direction*camera.focus_distance;
+    let point_on_lens = x+y+z;
+    let origin = camera.eye;
+    let direction = normalize(point_on_lens - origin);
+    return Ray(origin, direction);
 }
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
   let oc = ray.origin - sphere.center;
@@ -226,6 +242,13 @@ var<private> scene: array<Sphere, OBJECT_COUNT> = array(
     )
   ),
 );
+var<private> camera: Camera = Camera(
+  vec3f(0,5,10),   // eye
+  vec3f(0, -0.274721, -0.961524),  // direction
+  vec3f(0, 0.961524, -0.274721),   // up
+  vec3f(1,0,0),   // right
+  1.2,            // focus length
+);
 
 @fragment
 fn fs_main_test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
@@ -235,18 +258,16 @@ fn fs_main_test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
 @fragment
 fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   var rng_state = (u32(position.x)*resolution.y + u32(position.y)) * time;
-  let origin = vec3f(0);
-  let focus_distance = 0.8f;
   let aspect_ratio = f32(resolution.x) / f32(resolution.y);
   let position_aa = position.xy +normalize(rng_vec2(&rng_state));
   var uv = position_aa / (vec2f(resolution) - vec2f(1));
   uv = (2 * uv - vec2(1)) * vec2(aspect_ratio, -1);
-  let direction = normalize(vec3(uv, -focus_distance));
-  let ray = Ray(origin, direction);
+  let ray = make_ray(uv);
   var color = vec3f(0);
   for (var i = 0; i < SAMPLE_PER_FRAME; i += 1) {
-    color += trace(ray, &rng_state)/f32(SAMPLE_PER_FRAME);
+    color += trace(ray, &rng_state);
   }
+  color /= f32(SAMPLE_PER_FRAME);
   let x = u32(position.x);
   let y = u32(position.y);
   let i = (x * resolution.y + y)*3;
