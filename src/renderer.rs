@@ -72,7 +72,7 @@ impl Renderer {
             .await
             .expect("Failed to find an appropriate adapter");
         let mut limits = Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        let max_storage_buffer_size = 128 * 1024 * 1024;
+        let max_storage_buffer_size = 128<<20;
         limits.max_buffer_size = max(limits.max_buffer_size, max_storage_buffer_size as u64);
         limits.max_storage_buffer_binding_size = max_storage_buffer_size;
         limits.max_storage_buffers_per_shader_stage = 4;

@@ -202,7 +202,6 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
 const SAMPLE_FRAME = 120;
 const SAMPLE_PER_FRAME = 1;
 const BOUNCE_MAX = 20;
-const LIGHT_COUNT = 1;
 const OBJECT_COUNT = 4;
 var<private> scene: array<Sphere, OBJECT_COUNT> = array(
   Sphere(
