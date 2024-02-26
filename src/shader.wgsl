@@ -12,6 +12,14 @@ fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
   return position;
 }
 
+const PI = 3.141592653589793;
+const PI2 = PI*2;
+const EPSILON = 0.000001;
+const FLT_MAX = 3.40282e+38;
+const MAT_LAMBERTIAN = 1;
+const MAT_METAL = 2;
+const MAT_DIELECTRIC = 3;
+
 struct Ray {
   origin: vec3f,
   direction: vec3f,
@@ -39,14 +47,6 @@ struct Material {
     param1: f32,
 }
 
-
-const PI = 3.141592653589793;
-const PI2 = PI*2;
-const EPSILON = 0.000001;
-const FLT_MAX = 3.40282e+38;
-const start_color = vec4(0.4, 0.7, 1.0, 1.0);
-const end_color = vec4(0.0, 0.1, 0.3, 1.0);
-
 fn rng_int(state: ptr<function, u32>) {
     // PCG random number generator
     // Based on https://www.shadertoy.com/view/XlGcRh
@@ -64,7 +64,6 @@ fn rng_vec2(state: ptr<function, u32>) -> vec2f {
 fn rng_vec3(state: ptr<function, u32>) -> vec3f {
     return vec3f(rng_float(state), rng_float(state), rng_float(state));
 }
-
 fn point_on_ray(ray: Ray, t: f32) -> vec3f {
   return ray.origin + t * ray.direction;
 }
@@ -79,7 +78,6 @@ fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
   }
   return -v;
 }
-
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
   let oc = ray.origin - sphere.center;
   let a = dot(ray.direction, ray.direction);
@@ -108,7 +106,6 @@ fn refract(uv: vec3f, n: vec3f, etai_over_etat: f32) -> vec3f {
     let r_out_parallel = -sqrt(abs(1.0 - len*len)) * n;
     return r_out_perp + r_out_parallel;
 }
-
 fn reflectance(cosine: f32, ref_idx: f32) -> f32 {
     // Use Schlick's approximation for reflectance.
     var r0 = (1-ref_idx) / (1+ref_idx);
@@ -147,7 +144,6 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
     }
   }
 }
-
 fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
   var ret = vec4f(0);
   var attenuation = vec3f(1);
@@ -186,10 +182,6 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
   let sky = mix(vec3f(1.0), vec3f(0.5,0.7,1.0), x);
   return attenuation * sky;
 }
-
-const MAT_LAMBERTIAN = 1;
-const MAT_METAL = 2;
-const MAT_DIELECTRIC = 3;
 
 const SAMPLE_FRAME = 30;
 const SAMPLE_PER_FRAME = 3;
@@ -234,6 +226,7 @@ var<private> scene: array<Sphere, OBJECT_COUNT> = array(
     )
   ),
 );
+
 @fragment
 fn fs_main_test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
   var rng_state = (u32(position.x)*resolution.y + u32(position.y)) * time;
