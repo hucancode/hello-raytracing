@@ -56,8 +56,10 @@ fn rng_float(state: ptr<function, u32>) -> f32 {
     rng_int(state);
     return f32(*state) / f32(0xffffffffu);
 }
-
-fn rng_vec(state: ptr<function, u32>) -> vec3f {
+fn rng_vec2(state: ptr<function, u32>) -> vec2f {
+    return vec2f(rng_float(state), rng_float(state));
+}
+fn rng_vec3(state: ptr<function, u32>) -> vec3f {
     return vec3f(rng_float(state), rng_float(state), rng_float(state));
 }
 
@@ -66,7 +68,7 @@ fn point_on_ray(ray: Ray, t: f32) -> vec3f {
 }
 fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
   let t = f32(time);
-  let v = normalize(rng_vec(state));
+  let v = normalize(rng_vec3(state));
   if length(v) < EPSILON {
     return normal;
   }
@@ -130,7 +132,7 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
       let cos_theta = min(dot(-ray.direction, hit.normal), 1.0);
       let sin_theta = sqrt(1.0 - cos_theta*cos_theta);
       let cannot_refract = ir * sin_theta > 1.0;
-      if (cannot_refract || reflectance(cos_theta, ir) > rng_float(state)) {
+      if (cannot_refract || reflectance(cos_theta, ir) > fract(rng_float(state))) {
           let direction = reflect(ray.direction, hit.normal);
           return Ray(hit.point, normalize(direction));
       } else {
@@ -148,7 +150,7 @@ const MAT_LAMBERTIAN = 1;
 const MAT_METAL = 2;
 const MAT_DIELECTRIC = 3;
 
-const RENDERED_FRAME = 10;
+const RENDERED_FRAME = 20;
 const SAMPLE_PER_FRAME = 5;
 const BOUNCE_MAX = 20;
 const LIGHT_COUNT = 1;
@@ -194,19 +196,20 @@ var<private> scene: array<Sphere, OBJECT_COUNT> = array(
 @fragment
 fn test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
   var state = u32(position.x)*resolution.y + u32(position.y);
-  return vec4f(rng_vec(&state), 1.0);
+  return vec4f(rng_vec3(&state), 1.0);
 }
 @fragment
 fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  var rng_state = u32(position.x)*resolution.y + u32(position.y) * time;
   let origin = vec3f(0);
   let focus_distance = 0.8f;
   let aspect_ratio = f32(resolution.x) / f32(resolution.y);
-  var uv = position.xy / vec2f(f32(resolution.x - 1), f32(resolution.y - 1));
+  let position_aa = position.xy +normalize(rng_vec2(&rng_state));
+  var uv = position_aa / (vec2f(resolution) - vec2f(1));
   uv = (2 * uv - vec2(1)) * vec2(aspect_ratio, -1);
   let direction = normalize(vec3(uv, -focus_distance));
   let ray = Ray(origin, direction);
   var color = vec3f(0);
-  var rng_state = u32(position.x)*resolution.y + u32(position.y) * time;
   for (var i = 0; i < SAMPLE_PER_FRAME; i += 1) {
     color += trace(ray, &rng_state)/f32(SAMPLE_PER_FRAME);
   }
