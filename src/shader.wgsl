@@ -85,7 +85,7 @@ fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
   let c = dot(oc, oc) - sphere.radius*sphere.radius;
   let discriminant = b*b - 4*a*c;
   if (discriminant < 0) {
-      return HitRecord(vec3f(0), vec3f(0), -1, sphere.material, false);
+      return HitRecord(vec3f(), vec3f(), -1, sphere.material, false);
   }
   let t = (-b - sqrt(discriminant) ) / (2*a);
   let hit_point = point_on_ray(ray, t);
@@ -140,7 +140,7 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
       }
     }
     default: {
-      return Ray(vec3f(0), vec3f(0));
+      return Ray(vec3f(), vec3f(0));
     }
   }
 }
@@ -151,13 +151,13 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
   var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
     var closest_hit = HitRecord(
-      vec3f(0), 
-      vec3f(0), 
+      vec3f(), 
+      vec3f(), 
       FLT_MAX, 
       Material(
         MAT_METAL,
-        vec3f(0.8, 0.6, 0.2),
-        0.8,
+        vec3f(),
+        0,
       ),
       false,
     );
@@ -190,8 +190,8 @@ const LIGHT_COUNT = 1;
 const OBJECT_COUNT = 4;
 var<private> scene: array<Sphere, OBJECT_COUNT> = array(
   Sphere(
-    vec3f(0, -10.5, -1), 
-    10, 
+    vec3f(0, -100.5, -1), 
+    100, 
     Material(
       MAT_LAMBERTIAN,
       vec3f(0.8, 0.8, 0.0),
