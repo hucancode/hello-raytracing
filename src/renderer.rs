@@ -1,5 +1,5 @@
 use bytemuck::{bytes_of, Pod, Zeroable};
-use std::{borrow::Cow, cmp::max, mem::size_of, sync::Arc};
+use std::{borrow::Cow, cmp::{max, min}, mem::size_of, sync::Arc};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
@@ -45,6 +45,7 @@ const VERTICES: &[Vertex] = &[
 ];
 const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 const MAX_IMAGE_BUFFER_SIZE: u32 = 4096 * 4096;
+const MAX_OBJECT_IN_SCENE: u64 = 100;
 
 pub struct Renderer {
     device: Device,
@@ -112,7 +113,7 @@ impl Renderer {
                 entries: &[
                     BindGroupLayoutEntry {
                         binding: 0, // resolution
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
+                        visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -122,7 +123,7 @@ impl Renderer {
                     },
                     BindGroupLayoutEntry {
                         binding: 1, // frame count
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
+                        visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -132,7 +133,7 @@ impl Renderer {
                     },
                     BindGroupLayoutEntry {
                         binding: 2, // time
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
+                        visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -157,7 +158,7 @@ impl Renderer {
             entries: &[
                 BindGroupLayoutEntry {
                     binding: 0, // scene objects
-                    visibility: ShaderStages::VERTEX_FRAGMENT,
+                    visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
@@ -167,7 +168,7 @@ impl Renderer {
                 },
                 BindGroupLayoutEntry {
                     binding: 1, // camera
-                    visibility: ShaderStages::VERTEX_FRAGMENT,
+                    visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -250,7 +251,7 @@ impl Renderer {
         });
         let scene_object_buffer = device.create_buffer(&BufferDescriptor {
             usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            size: 100 * size_of::<Sphere>() as BufferAddress,
+            size: MAX_OBJECT_IN_SCENE * size_of::<Sphere>() as BufferAddress,
             mapped_at_creation: false,
             label: None,
         });
@@ -310,7 +311,9 @@ impl Renderer {
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytes_of(&scene.camera));
         let data = bytemuck::cast_slice(&scene.objects.as_slice());
-        self.queue.write_buffer(&self.scene_object_buffer, 0, data);
+        let n = min(data.len(), MAX_OBJECT_IN_SCENE as usize * size_of::<Sphere>());
+        self.queue
+            .write_buffer(&self.scene_object_buffer, 0, &data[0..n]);
     }
 
     pub fn set_time(&mut self, time: u32) {
