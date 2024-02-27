@@ -4,12 +4,12 @@ use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferAddress, BufferBinding,
-    BufferBindingType, BufferDescriptor, BufferSize, BufferUsages, Color, CommandEncoderDescriptor,
-    Device, DeviceDescriptor, FragmentState, IndexFormat, Instance, Limits, LoadOp,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PrimitiveState, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface,
-    SurfaceConfiguration, TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
+    BufferBindingType, BufferDescriptor, BufferUsages, Color, CommandEncoderDescriptor, Device,
+    DeviceDescriptor, FragmentState, IndexFormat, Instance, Limits, LoadOp, MultisampleState,
+    Operations, PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
+    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
@@ -44,6 +44,8 @@ const VERTICES: &[Vertex] = &[
     },
 ];
 const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
+const MAX_IMAGE_BUFFER_SIZE: u32 = 4096 * 4096;
+
 pub struct Renderer {
     device: Device,
     surface: Surface<'static>,
@@ -55,7 +57,6 @@ pub struct Renderer {
     resolution_buffer: Buffer,
     frame_count_buffer: Buffer,
     time_buffer: Buffer,
-    image_buffer: Buffer,
     scene_object_buffer: Buffer,
     camera_buffer: Buffer,
     bind_group_global_input: BindGroup,
@@ -105,11 +106,6 @@ impl Renderer {
             contents: bytemuck::cast_slice(&INDICES),
             usage: BufferUsages::INDEX,
         });
-        let resolution_buffer_size = BufferSize::new(2 * size_of::<u32>() as u64);
-        let frame_count_buffer_size = BufferSize::new(size_of::<u32>() as u64);
-        let time_buffer_size = BufferSize::new(size_of::<u32>() as u64);
-        let image_buffer_size_int = (128 << 20) / size_of::<f32>() as u32;
-        let image_buffer_size = BufferSize::new(image_buffer_size_int as u64);
         let bind_group_layout_global_input =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: None,
@@ -120,7 +116,7 @@ impl Renderer {
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: resolution_buffer_size,
+                            min_binding_size: None,
                         },
                         count: None,
                     },
@@ -130,7 +126,7 @@ impl Renderer {
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: time_buffer_size,
+                            min_binding_size: None,
                         },
                         count: None,
                     },
@@ -140,7 +136,7 @@ impl Renderer {
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: time_buffer_size,
+                            min_binding_size: None,
                         },
                         count: None,
                     },
@@ -150,14 +146,12 @@ impl Renderer {
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Storage { read_only: false },
                             has_dynamic_offset: false,
-                            min_binding_size: image_buffer_size,
+                            min_binding_size: None,
                         },
                         count: None,
                     },
                 ],
             });
-        let scene_object_buffer_size = BufferSize::new(100 * size_of::<Sphere>() as u64);
-        let camera_buffer_size = BufferSize::new(size_of::<Camera>() as u64);
         let bind_group_layout_scene = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: None,
             entries: &[
@@ -226,7 +220,7 @@ impl Renderer {
             contents: bytemuck::bytes_of(&[0u32]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
-        let image_data = vec![0f32; image_buffer_size_int as usize];
+        let image_data = vec![0f32; MAX_IMAGE_BUFFER_SIZE as usize];
         let image_buffer = device.create_buffer_init(&BufferInitDescriptor {
             contents: bytemuck::cast_slice(image_data.as_slice()),
             usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
@@ -240,7 +234,7 @@ impl Renderer {
                     resource: BindingResource::Buffer(BufferBinding {
                         buffer: &resolution_buffer,
                         offset: 0,
-                        size: resolution_buffer_size,
+                        size: None,
                     }),
                 },
                 BindGroupEntry {
@@ -248,7 +242,7 @@ impl Renderer {
                     resource: BindingResource::Buffer(BufferBinding {
                         buffer: &frame_count_buffer,
                         offset: 0,
-                        size: frame_count_buffer_size,
+                        size: None,
                     }),
                 },
                 BindGroupEntry {
@@ -256,7 +250,7 @@ impl Renderer {
                     resource: BindingResource::Buffer(BufferBinding {
                         buffer: &time_buffer,
                         offset: 0,
-                        size: time_buffer_size,
+                        size: None,
                     }),
                 },
                 BindGroupEntry {
@@ -264,7 +258,7 @@ impl Renderer {
                     resource: BindingResource::Buffer(BufferBinding {
                         buffer: &image_buffer,
                         offset: 0,
-                        size: image_buffer_size,
+                        size: None,
                     }),
                 },
             ],
@@ -298,7 +292,7 @@ impl Renderer {
                     resource: BindingResource::Buffer(BufferBinding {
                         buffer: &camera_buffer,
                         offset: 0,
-                        size: camera_buffer_size,
+                        size: None,
                     }),
                 },
             ],
@@ -316,7 +310,6 @@ impl Renderer {
             resolution_buffer,
             frame_count_buffer,
             time_buffer,
-            image_buffer,
             scene_object_buffer,
             camera_buffer,
             bind_group_global_input,
@@ -333,13 +326,6 @@ impl Renderer {
             &self.resolution_buffer,
             0,
             bytemuck::bytes_of(&[width, height]),
-        );
-        let image_buffer_size_int = 3 * width * height;
-        let image_data = vec![0f32; image_buffer_size_int as usize];
-        self.queue.write_buffer(
-            &self.image_buffer,
-            0,
-            bytemuck::cast_slice(image_data.as_slice()),
         );
         self.frame_count = 0;
     }
