@@ -9,13 +9,13 @@ pub struct Camera {
     up: Vec4,
     right: Vec4,
     focal_length: f32,
+    focal_blur_amount: f32,
     fov: f32,
-    aspect_ratio: f32,
     _padding: f32,
 }
 
 impl Camera {
-    pub fn new(from: Vec3, to: Vec3, focal_length: f32, fov: f32, aspect_ratio: f32) -> Self {
+    pub fn new(from: Vec3, to: Vec3, focal_length: f32, focal_blur_amount: f32, fov: f32) -> Self {
         let eye = from;
         let direction = (to - from).normalize();
         let right = direction.cross(Vec3::Y).normalize();
@@ -27,8 +27,8 @@ impl Camera {
             up: up.extend(1.0),
             right: right.extend(1.0),
             focal_length,
+            focal_blur_amount,
             fov,
-            aspect_ratio,
             _padding: 0.0,
         }
     }

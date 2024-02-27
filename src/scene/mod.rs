@@ -24,7 +24,7 @@ impl Scene {
         let base_radius = 1.0;
         let base_center = Vec3::ZERO;
         let camera_position = base_center + Vec3::new(0.0, 0.0, 1.5);
-        let camera = Camera::new(camera_position, base_center, 0.5, PI * 0.7, 16.0 / 9.0);
+        let camera = Camera::new(camera_position, base_center, 0.8, 0.06, PI * 0.7);
         objects.push(Sphere::new_lambertian(base_center, base_radius, black));
         let mut generate = |x: f32, y: f32, z: f32| {
             if rng.gen_bool(0.6) {
@@ -69,9 +69,9 @@ impl Scene {
         let camera = Camera::new(
             Vec3::new(0.0, 0.2, 1.0),
             Vec3::new(0.0, 0.1, -3.0),
-            1.2,
+            1.6,
+            0.1,
             PI * 0.5,
-            16.0 / 9.0,
         );
         let objects = vec![
             Sphere::new_lambertian(Vec3::new(0.0, -100.5, -1.0), 100.0, base),

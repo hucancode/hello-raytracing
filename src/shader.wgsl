@@ -27,8 +27,8 @@ struct Camera {
   up: vec4f,
   right: vec4f,
   focal_length: f32,
+  focal_blur_amount: f32,
   fov: f32,
-  aspect_ratio: f32,
   // _padding: vec3f,
 }
 struct Ray {
@@ -90,12 +90,21 @@ fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
   }
   return -v;
 }
-fn make_ray(uv: vec2f) -> Ray {
+fn random_on_disk(state: ptr<function, u32>, radius: f32) -> vec3f {
+  let v = normalize(rng_vec2(state));
+  let r = rng_float(state)*radius;
+  return vec3f(v, 0.0)*r;
+}
+fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
     let x = camera.right*uv.x*tan(camera.fov*0.5);
     let y = camera.up*uv.y*tan(camera.fov*0.5);
     let z = camera.direction;
-    let direction = normalize(x+y+z);
-    let origin = camera.eye;
+    var direction = normalize(x+y+z);
+    var origin = camera.eye;
+    // focus blur
+    let focus_point = origin + direction*camera.focal_length;
+    origin += vec4f(random_on_disk(state, camera.focal_blur_amount), 1.0);
+    direction = focus_point - origin;
     return Ray(origin.xyz, direction.xyz);
 }
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
@@ -233,7 +242,7 @@ fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   let position_aa = position.xy +normalize(rng_vec2(&rng_state));
   var uv = position_aa / (vec2f(resolution) - vec2f(1));
   uv = (2 * uv - vec2(1)) * vec2(aspect_ratio, -1);
-  let ray = make_ray(uv);
+  let ray = make_ray(uv, &rng_state);
   var color = vec3f(0);
   for (var i = 0; i < SAMPLE_PER_FRAME; i += 1) {
     color += trace(ray, &rng_state);
