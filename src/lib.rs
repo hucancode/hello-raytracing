@@ -1,5 +1,6 @@
 mod app;
 mod renderer;
+mod scene;
 use crate::app::App;
 use std::{sync::Arc, time::Instant};
 use winit::{

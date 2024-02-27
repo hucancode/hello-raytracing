@@ -1,17 +1,24 @@
-use bytemuck::{Pod, Zeroable};
-use std::{borrow::Cow, cmp::max, mem::size_of, sync::Arc};
+use bytemuck::{bytes_of, Pod, Zeroable};
+use std::{
+    borrow::Cow,
+    cmp::{max, min},
+    mem::size_of,
+    sync::Arc,
+};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferAddress, BufferBinding,
-    BufferBindingType, BufferSize, BufferUsages, Color, CommandEncoderDescriptor, Device,
-    DeviceDescriptor, FragmentState, IndexFormat, Instance, LoadOp, MultisampleState, Operations,
-    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
-    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferAddress, BufferBindingType, BufferDescriptor,
+    BufferUsages, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, FragmentState,
+    IndexFormat, Instance, Limits, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor,
+    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource,
+    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureViewDescriptor,
+    VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
+
+use crate::scene::{Camera, Scene, Sphere};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -42,6 +49,9 @@ const VERTICES: &[Vertex] = &[
     },
 ];
 const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
+const MAX_IMAGE_BUFFER_SIZE: u32 = 4096 * 4096;
+const MAX_OBJECT_IN_SCENE: u64 = 100;
+
 pub struct Renderer {
     device: Device,
     surface: Surface<'static>,
@@ -51,8 +61,13 @@ pub struct Renderer {
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     resolution_buffer: Buffer,
+    frame_count_buffer: Buffer,
     time_buffer: Buffer,
+    scene_object_buffer: Buffer,
+    camera_buffer: Buffer,
     bind_group_global_input: BindGroup,
+    bind_group_scene: BindGroup,
+    frame_count: u32,
 }
 impl Renderer {
     pub async fn new(window: Arc<Window>) -> Renderer {
@@ -68,8 +83,19 @@ impl Renderer {
             })
             .await
             .expect("Failed to find an appropriate adapter");
+        let mut limits = Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        let max_storage_buffer_size = 256 << 20;
+        limits.max_buffer_size = max(limits.max_buffer_size, max_storage_buffer_size as u64);
+        limits.max_storage_buffer_binding_size = max_storage_buffer_size;
+        limits.max_storage_buffers_per_shader_stage = 4;
         let (device, queue) = adapter
-            .request_device(&DeviceDescriptor::default(), None)
+            .request_device(
+                &DeviceDescriptor {
+                    required_limits: limits,
+                    ..Default::default()
+                },
+                None,
+            )
             .await
             .expect("Failed to create device");
         let shader = device.create_shader_module(ShaderModuleDescriptor {
@@ -92,28 +118,74 @@ impl Renderer {
                 entries: &[
                     BindGroupLayoutEntry {
                         binding: 0, // resolution
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
+                        visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: BufferSize::new(2 * size_of::<u32>() as u64),
+                            min_binding_size: None,
                         },
                         count: None,
                     },
                     BindGroupLayoutEntry {
-                        binding: 1, // time
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
+                        binding: 1, // frame count
+                        visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
                             ty: BufferBindingType::Uniform,
                             has_dynamic_offset: false,
-                            min_binding_size: BufferSize::new(size_of::<u32>() as u64),
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 2, // time
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 3, // image data
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
                         },
                         count: None,
                     },
                 ],
             });
+        let bind_group_layout_scene = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0, // scene objects
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1, // camera
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        println!("creating pipeline layout");
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            bind_group_layouts: &[&bind_group_layout_global_input],
+            bind_group_layouts: &[&bind_group_layout_global_input, &bind_group_layout_scene],
             ..Default::default()
         });
         let config = surface
@@ -138,40 +210,77 @@ impl Renderer {
             multisample: MultisampleState::default(),
             multiview: None,
         });
-        let resolution_buffer_size = 2 * size_of::<u32>() as BufferAddress;
+        println!("created pipeline");
         let resolution_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(&[size.width, size.height]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
-        let time_buffer_size = size_of::<u32>() as BufferAddress;
+        let frame_count_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::bytes_of(&[0u32]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
         let time_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: bytemuck::bytes_of(&[0u32]),
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+        let image_data = vec![0f32; MAX_IMAGE_BUFFER_SIZE as usize];
+        let image_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            contents: bytemuck::cast_slice(image_data.as_slice()),
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            label: None,
         });
         let bind_group_global_input = device.create_bind_group(&BindGroupDescriptor {
             layout: &bind_group_layout_global_input,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &resolution_buffer,
-                        offset: 0,
-                        size: BufferSize::new(resolution_buffer_size),
-                    }),
+                    resource: resolution_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &time_buffer,
-                        offset: 0,
-                        size: BufferSize::new(time_buffer_size),
-                    }),
+                    resource: frame_count_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: time_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: image_buffer.as_entire_binding(),
                 },
             ],
             label: None,
         });
+        let scene_object_buffer = device.create_buffer(&BufferDescriptor {
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            size: MAX_OBJECT_IN_SCENE * size_of::<Sphere>() as BufferAddress,
+            mapped_at_creation: false,
+            label: None,
+        });
+        let camera_buffer = device.create_buffer(&BufferDescriptor {
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            size: size_of::<Camera>() as BufferAddress,
+            mapped_at_creation: false,
+            label: None,
+        });
+        let bind_group_scene = device.create_bind_group(&BindGroupDescriptor {
+            layout: &bind_group_layout_scene,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: scene_object_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: camera_buffer.as_entire_binding(),
+                },
+            ],
+            label: None,
+        });
+
         Self {
             device,
             surface,
@@ -181,8 +290,13 @@ impl Renderer {
             vertex_buffer,
             index_buffer,
             resolution_buffer,
+            frame_count_buffer,
             time_buffer,
+            scene_object_buffer,
+            camera_buffer,
             bind_group_global_input,
+            bind_group_scene,
+            frame_count: 0,
         }
     }
 
@@ -195,6 +309,19 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&[width, height]),
         );
+        self.frame_count = 0;
+    }
+
+    pub fn set_scene(&mut self, scene: &Scene) {
+        self.queue
+            .write_buffer(&self.camera_buffer, 0, bytes_of(&scene.camera));
+        let data = bytemuck::cast_slice(&scene.objects.as_slice());
+        let n = min(
+            data.len(),
+            MAX_OBJECT_IN_SCENE as usize * size_of::<Sphere>(),
+        );
+        self.queue
+            .write_buffer(&self.scene_object_buffer, 0, &data[0..n]);
     }
 
     pub fn set_time(&mut self, time: u32) {
@@ -203,6 +330,11 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) {
+        self.queue.write_buffer(
+            &self.frame_count_buffer,
+            0,
+            bytemuck::bytes_of(&[self.frame_count]),
+        );
         let frame = self
             .surface
             .get_current_texture()
@@ -224,11 +356,13 @@ impl Renderer {
         });
         rpass.set_pipeline(&self.render_pipeline);
         rpass.set_bind_group(0, &self.bind_group_global_input, &[]);
+        rpass.set_bind_group(1, &self.bind_group_scene, &[]);
         rpass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
         rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         rpass.draw_indexed(0..6, 0, 0..1);
         drop(rpass);
         self.queue.submit(Some(encoder.finish()));
         frame.present();
+        self.frame_count += 1;
     }
 }
