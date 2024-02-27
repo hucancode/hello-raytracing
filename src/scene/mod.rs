@@ -2,12 +2,12 @@ mod camera;
 mod material;
 mod sphere;
 pub use camera::Camera;
+use glam::Vec3;
 pub use material::Material;
 pub use material::DIELECTRIC;
 pub use material::METAL;
-pub use sphere::Sphere;
-use glam::Vec3;
 use rand::prelude::*;
+pub use sphere::Sphere;
 
 pub struct Scene {
     pub camera: Camera,
@@ -21,15 +21,16 @@ impl Scene {
         let mut objects = Vec::new();
         let base_radius = 1.4;
         let base_center = Vec3::new(0.0, -1.0, 0.0);
+        let camera_position = base_center + Vec3::new(0.0, 0.0, 10.0);
+        let camera = Camera::new(camera_position, base_center, 1.2);
         objects.push(Sphere::new_lambertian(base_center, base_radius, black));
-        for _ in 0..10 {
-            let dir = Vec3::new(
-                rng.gen::<f32>() - 0.5,
-                rng.gen::<f32>() * 0.5,
-                rng.gen::<f32>() * 0.5,
-            );
-            let mat = (rng.gen::<f32>() * 3.0 + 1.0) as u32;
-            let size = (rng.gen::<f32>() * 0.2 * base_radius) + base_radius * 0.05;
+        let mut generate = |x: f32, y: f32, z: f32| {
+            if rng.gen_bool(0.6) {
+                return;
+            }
+            let dir = Vec3::new(x, y, z);
+            let mat = rng.gen_range(1..=3);
+            let size = rng.gen_range(0.05..0.15) * base_radius;
             let pos = dir.normalize() * (base_radius + size) + base_center;
             let obj = match mat {
                 METAL => {
@@ -38,7 +39,7 @@ impl Scene {
                     Sphere::new_metal(pos, size, color, fuzzy)
                 }
                 DIELECTRIC => {
-                    let ir = rng.gen::<f32>()*0.3 + 0.1;
+                    let ir = rng.gen_range(0.1..0.4);
                     Sphere::new_dielectric(pos, size, ir)
                 }
                 _ => {
@@ -47,8 +48,14 @@ impl Scene {
                 }
             };
             objects.push(obj);
+        };
+        for x in -2..2 {
+            for y in 0..4 {
+                for z in 0..4 {
+                    generate(x as f32, y as f32, z as f32);
+                }
+            }
         }
-        let camera = Camera::new(Vec3::new(0.0, 2.0, 10.0), Vec3::ZERO, 1.2);
         Self { camera, objects }
     }
     pub fn _new_simple() -> Self {
