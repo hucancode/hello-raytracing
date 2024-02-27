@@ -22,14 +22,14 @@ const MAT_DIELECTRIC = 3u;
 const SKY = vec3f(0.54, 0.86, 0.92);
 const BLUE = vec3f(0.54, 0.7, 0.98);
 struct Camera {
-  eye: vec3f,
-  //_padding1: f32,
-  direction: vec3f,
-  //_padding2: f32,
-  up: vec3f,
-  //_padding3: f32,
-  right: vec3f,
+  eye: vec4f,
+  direction: vec4f,
+  up: vec4f,
+  right: vec4f,
   focal_length: f32,
+  fov: f32,
+  aspect_ratio: f32,
+  // _padding: vec3f,
 }
 struct Ray {
   origin: vec3f,
@@ -91,13 +91,12 @@ fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
   return -v;
 }
 fn make_ray(uv: vec2f) -> Ray {
-    let x = camera.right*uv.x;
-    let y = camera.up*uv.y;
-    let z = camera.direction*camera.focal_length;
-    let point_on_lens = x+y+z;
+    let x = camera.right*uv.x*tan(camera.fov*0.5);
+    let y = camera.up*uv.y*tan(camera.fov*0.5);
+    let z = camera.direction;
+    let direction = normalize(x+y+z);
     let origin = camera.eye;
-    let direction = normalize(point_on_lens - origin);
-    return Ray(origin, direction);
+    return Ray(origin.xyz, direction.xyz);
 }
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
   let center = sphere.center_and_radius.xyz;

@@ -1,35 +1,35 @@
 use bytemuck::{Pod, Zeroable};
-use glam::Vec3;
+use glam::{Vec3, Vec4};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Camera {
-    eye: Vec3,
-    _padding1: f32,
-    direction: Vec3,
-    _padding2: f32,
-    up: Vec3,
-    _padding3: f32,
-    right: Vec3,
-    focus_distance: f32,
-    // _padding: [u8; 12],
+    eye: Vec4,
+    direction: Vec4,
+    up: Vec4,
+    right: Vec4,
+    focal_length: f32,
+    fov: f32,
+    aspect_ratio: f32,
+    _padding: f32,
 }
 
 impl Camera {
-    pub fn new(from: Vec3, to: Vec3, focus_distance: f32) -> Self {
+    pub fn new(from: Vec3, to: Vec3, focal_length: f32, fov: f32, aspect_ratio: f32) -> Self {
         let eye = from;
-        let direction = (to - from).try_normalize().unwrap_or(Vec3::NEG_Z);
-        let up = Vec3::new(0.0, -direction.z, direction.y);
-        let right = direction.cross(up);
+        let direction = (to - from).normalize();
+        let right = direction.cross(Vec3::Y).normalize();
+        let up = right.cross(direction).normalize();
+        println!("camera, eye = {eye:?}, dir {direction:?} up {up:?} right {right:?}");
         Self {
-            eye,
-            direction,
-            up,
-            right,
-            focus_distance,
-            _padding1: 0.0,
-            _padding2: 0.0,
-            _padding3: 0.0,
+            eye: eye.extend(1.0),
+            direction: direction.extend(1.0),
+            up: up.extend(1.0),
+            right: right.extend(1.0),
+            focal_length,
+            fov,
+            aspect_ratio,
+            _padding: 0.0,
         }
     }
 }
