@@ -23,11 +23,11 @@ const SKY = vec3f(0.54, 0.86, 0.92);
 const BLUE = vec3f(0.54, 0.7, 0.98);
 struct Camera {
   eye: vec3f,
-  _padding1: f32,
+  //_padding1: f32,
   direction: vec3f,
-  _padding2: f32,
+  //_padding2: f32,
   up: vec3f,
-  _padding3: f32,
+  //_padding3: f32,
   right: vec3f,
   focus_distance: f32,
 }
@@ -56,6 +56,7 @@ struct Material {
     albedo: vec4f,
     id: u32,
     params: vec3f,
+    // _padding: f32,
 }
 
 fn rng_int(state: ptr<function, u32>) {
@@ -186,17 +187,8 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
   var current_ray = ray;
   var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
-    var closest_hit = HitRecord(
-      vec3f(), 
-      vec3f(), 
-      FLT_MAX, 
-      Material(
-        vec4f(),
-        MAT_METAL,
-        vec3f(),
-      ),
-      false,
-    );
+    var closest_hit: HitRecord;
+    closest_hit.t = FLT_MAX;
     for (var i = 0u; i < arrayLength(&scene); i++) {
       let obj = scene[i];
       let hit = intersect_sphere(current_ray, obj);
@@ -226,7 +218,7 @@ const BOUNCE_MAX = 20;
 const OBJECT_COUNT = 4;
 
 @group(1) @binding(0) 
-var<storage, read> scene: array<Sphere>;
+var<storage> scene: array<Sphere>;
 @group(1) @binding(1) 
 var<uniform> camera: Camera;
 
