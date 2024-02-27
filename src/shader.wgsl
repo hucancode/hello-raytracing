@@ -29,7 +29,7 @@ struct Camera {
   up: vec3f,
   //_padding3: f32,
   right: vec3f,
-  focus_distance: f32,
+  focal_length: f32,
 }
 struct Ray {
   origin: vec3f,
@@ -93,7 +93,7 @@ fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
 fn make_ray(uv: vec2f) -> Ray {
     let x = camera.right*uv.x;
     let y = camera.up*uv.y;
-    let z = camera.direction*camera.focus_distance;
+    let z = camera.direction*camera.focal_length;
     let point_on_lens = x+y+z;
     let origin = camera.eye;
     let direction = normalize(point_on_lens - origin);

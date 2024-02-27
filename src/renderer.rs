@@ -1,5 +1,10 @@
 use bytemuck::{bytes_of, Pod, Zeroable};
-use std::{borrow::Cow, cmp::{max, min}, mem::size_of, sync::Arc};
+use std::{
+    borrow::Cow,
+    cmp::{max, min},
+    mem::size_of,
+    sync::Arc,
+};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
@@ -311,7 +316,10 @@ impl Renderer {
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytes_of(&scene.camera));
         let data = bytemuck::cast_slice(&scene.objects.as_slice());
-        let n = min(data.len(), MAX_OBJECT_IN_SCENE as usize * size_of::<Sphere>());
+        let n = min(
+            data.len(),
+            MAX_OBJECT_IN_SCENE as usize * size_of::<Sphere>(),
+        );
         self.queue
             .write_buffer(&self.scene_object_buffer, 0, &data[0..n]);
     }
