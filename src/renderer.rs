@@ -3,13 +3,13 @@ use std::{borrow::Cow, cmp::max, mem::size_of, sync::Arc};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferAddress, BufferBinding,
-    BufferBindingType, BufferDescriptor, BufferUsages, Color, CommandEncoderDescriptor, Device,
-    DeviceDescriptor, FragmentState, IndexFormat, Instance, Limits, LoadOp, MultisampleState,
-    Operations, PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration,
-    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferAddress, BufferBindingType, BufferDescriptor,
+    BufferUsages, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, FragmentState,
+    IndexFormat, Instance, Limits, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor,
+    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource,
+    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureViewDescriptor,
+    VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
@@ -231,35 +231,19 @@ impl Renderer {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &resolution_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
+                    resource: resolution_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &frame_count_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
+                    resource: frame_count_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &time_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
+                    resource: time_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 3,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &image_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
+                    resource: image_buffer.as_entire_binding(),
                 },
             ],
             label: None,
@@ -281,19 +265,11 @@ impl Renderer {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &scene_object_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
+                    resource: scene_object_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &camera_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
+                    resource: camera_buffer.as_entire_binding(),
                 },
             ],
             label: None,

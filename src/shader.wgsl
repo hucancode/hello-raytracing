@@ -197,7 +197,7 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
       ),
       false,
     );
-    for (var i = 0u; i < arrayLength(&scene); i += 1u) {
+    for (var i = 0u; i < arrayLength(&scene); i++) {
       let obj = scene[i];
       let hit = intersect_sphere(current_ray, obj);
       if hit.t > 0 && hit.t < closest_hit.t {
