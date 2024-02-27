@@ -2,12 +2,12 @@ mod camera;
 mod material;
 mod sphere;
 pub use camera::Camera;
-use glam::Vec3;
 pub use material::Material;
 pub use material::DIELECTRIC;
 pub use material::METAL;
-use rand::prelude::*;
 pub use sphere::Sphere;
+use glam::Vec3;
+use rand::prelude::*;
 
 pub struct Scene {
     pub camera: Camera,
@@ -38,7 +38,7 @@ impl Scene {
                     Sphere::new_metal(pos, size, color, fuzzy)
                 }
                 DIELECTRIC => {
-                    let ir = rng.gen();
+                    let ir = rng.gen::<f32>()*0.3 + 0.1;
                     Sphere::new_dielectric(pos, size, ir)
                 }
                 _ => {

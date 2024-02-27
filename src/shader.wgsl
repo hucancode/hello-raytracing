@@ -212,9 +212,9 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
   return attenuation * sky;
 }
 
-const SAMPLE_FRAME = 120;
+const SAMPLE_FRAME = 1000;
 const SAMPLE_PER_FRAME = 1;
-const BOUNCE_MAX = 20;
+const BOUNCE_MAX = 10;
 const OBJECT_COUNT = 4;
 
 @group(1) @binding(0) 
