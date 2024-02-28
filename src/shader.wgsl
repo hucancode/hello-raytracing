@@ -1,17 +1,3 @@
-@group(0) @binding(0)
-var<uniform> resolution: vec2u;
-@group(0) @binding(1)
-var<uniform> frame_count: u32;
-@group(0) @binding(2)
-var<uniform> time: u32;
-@group(0) @binding(3)
-var<storage, read_write> image: array<f32>;
-
-@vertex
-fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
-  return position;
-}
-
 const PI = 3.141592653589793;
 const PI2 = PI*2;
 const EPSILON = 0.000001;
@@ -21,6 +7,23 @@ const MAT_METAL = 2u;
 const MAT_DIELECTRIC = 3u;
 const SKY = vec3f(0.54, 0.86, 0.92);
 const BLUE = vec3f(0.54, 0.7, 0.98);
+const SAMPLE_FRAME = 1000;
+const SAMPLE_PER_FRAME = 1;
+const BOUNCE_MAX = 10;
+
+@group(0) @binding(0)
+var<uniform> resolution: vec2u;
+@group(0) @binding(1)
+var<uniform> frame_count: u32;
+@group(0) @binding(2)
+var<uniform> time: u32;
+@group(0) @binding(3)
+var<storage, read_write> image: array<f32>;
+@group(1) @binding(0) 
+var<storage> scene: array<Sphere>;
+@group(1) @binding(1) 
+var<uniform> camera: Camera;
+
 struct Camera {
   eye: vec4f,
   direction: vec4f,
@@ -57,6 +60,11 @@ struct Material {
     id: u32,
     params: vec3f,
     // _padding: f32,
+}
+
+@vertex
+fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
+  return position;
 }
 
 fn rng_int(state: ptr<function, u32>) {
@@ -96,8 +104,9 @@ fn random_on_disk(state: ptr<function, u32>, radius: f32) -> vec3f {
   return vec3f(v, 0.0)*r;
 }
 fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
-    let x = camera.right*uv.x*tan(camera.fov*0.5);
-    let y = camera.up*uv.y*tan(camera.fov*0.5);
+    let k = tan(camera.fov*0.5);
+    let x = camera.right*uv.x*k;
+    let y = camera.up*uv.y*k;
     let z = camera.direction;
     var direction = normalize(x+y+z);
     var origin = camera.eye;
@@ -215,20 +224,10 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
       attenuation *= closest_hit.material.albedo.rgb;
     }
   }
-  let x = ray.direction.y*0.5 + 0.5;
-  let sky = mix(SKY, BLUE, x);
+  let sky = mix(SKY, BLUE, ray.direction.y*0.5 + 0.5);
   return attenuation * sky;
 }
 
-const SAMPLE_FRAME = 1000;
-const SAMPLE_PER_FRAME = 1;
-const BOUNCE_MAX = 10;
-const OBJECT_COUNT = 4;
-
-@group(1) @binding(0) 
-var<storage> scene: array<Sphere>;
-@group(1) @binding(1) 
-var<uniform> camera: Camera;
 
 @fragment
 fn fs_main_test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
