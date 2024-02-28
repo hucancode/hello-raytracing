@@ -9,7 +9,7 @@ pub struct App {
 impl App {
     pub async fn new(window: Arc<Window>) -> Self {
         let renderer = Renderer::new(window).await;
-        let scene = Scene::_new_simple();
+        let scene = Scene::new_simple();
         Self { renderer, scene }
     }
     pub fn init(&mut self) {

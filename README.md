@@ -14,4 +14,5 @@ This is my attempt in learning raytracing tech with [Peter Shirley](https://rayt
 
 ## Focus Blur
 
-![image](https://github.com/hucancode/hello-raytracing/assets/15852849/ebe0fdaa-3b69-4e52-b6dd-fe12fc0d63fd)
+![image](https://github.com/hucancode/hello-raytracing/assets/15852849/c63080b1-4457-4b7d-9846-703570ddffe0)
+

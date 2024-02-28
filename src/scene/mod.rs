@@ -23,8 +23,8 @@ impl Scene {
         let mut objects = Vec::new();
         let base_radius = 1.0;
         let base_center = Vec3::ZERO;
-        let camera_position = base_center + Vec3::new(0.0, 0.0, 1.5);
-        let camera = Camera::new(camera_position, base_center, 0.8, 0.06, PI * 0.7);
+        let camera_position = base_center + Vec3::new(0.0, 0.0, 3.5);
+        let camera = Camera::new(camera_position, base_center, 3.5, 0.04, PI * 0.2);
         objects.push(Sphere::new_lambertian(base_center, base_radius, black));
         let mut generate = |x: f32, y: f32, z: f32| {
             if rng.gen_bool(0.6) {
@@ -60,18 +60,18 @@ impl Scene {
         }
         Self { camera, objects }
     }
-    pub fn _new_simple() -> Self {
+    pub fn new_simple() -> Self {
         let yellow = Vec3::new(0.98, 0.89, 0.69);
         let red = Vec3::new(0.953, 0.545, 0.659);
         let base = Vec3::new(0.12, 0.12, 0.18);
         let blue = Vec3::new(0.54, 0.7, 0.98);
         let black = Vec3::new(0.06, 0.06, 0.1);
         let camera = Camera::new(
-            Vec3::new(0.0, 0.2, 1.0),
+            Vec3::new(0.0, 0.2, 1.5),
             Vec3::new(0.0, 0.1, -3.0),
-            1.6,
+            2.2,
             0.1,
-            PI * 0.5,
+            PI * 0.3,
         );
         let objects = vec![
             Sphere::new_lambertian(Vec3::new(0.0, -100.5, -1.0), 100.0, base),
