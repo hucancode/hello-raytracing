@@ -136,21 +136,12 @@ fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
   }
   return HitRecord(hit_point, normal, t, sphere.material, front_face);
 }
-fn reflect(v: vec3f, n: vec3f) -> vec3f {
-    return v - 2*dot(v,n)*n;
-}
-fn refract(uv: vec3f, n: vec3f, etai_over_etat: f32) -> vec3f {
+fn refract(uv: vec3f, n: vec3f, ir: f32) -> vec3f {
     let cos_theta = min(dot(-uv, n), 1.0);
-    let r_out_perp =  etai_over_etat * (uv + cos_theta*n);
+    let r_out_perp =  ir * (uv + cos_theta*n);
     let len = length(r_out_perp);
     let r_out_parallel = -sqrt(abs(1.0 - len*len)) * n;
     return r_out_perp + r_out_parallel;
-}
-fn reflectance(cosine: f32, ref_idx: f32) -> f32 {
-    // Use Schlick's approximation for reflectance.
-    var r0 = (1-ref_idx) / (1+ref_idx);
-    r0 = r0*r0;
-    return r0 + (1-r0)*pow((1 - cosine), 5.0);
 }
 fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
   switch hit.material.id {
@@ -165,36 +156,14 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
     }
     case MAT_DIELECTRIC: {
       var ir = hit.material.params.x;
-      if hit.front_face {
+      if hit.front_face && ir > EPSILON {
         ir = 1.0/ir;
       }
-      let cos_theta = min(dot(-ray.direction, hit.normal), 1.0);
-      let sin_theta = sqrt(1.0 - cos_theta*cos_theta);
-      let cannot_refract = ir * sin_theta > 1.0;
-      if (cannot_refract || reflectance(cos_theta, ir) > fract(rng_float(state))) {
-          let direction = reflect(ray.direction, hit.normal);
-          return Ray(hit.point, normalize(direction));
-      } else {
-          let direction = refract(ray.direction, hit.normal, ir);
-          return Ray(hit.point, normalize(direction));
-      }
+      let direction = refract(ray.direction, hit.normal, ir);
+      return Ray(hit.point, normalize(direction));
     }
     default: {
-      var ir = hit.material.params.x;
-      if hit.front_face {
-        ir = 1.0/ir;
-      }
-      let cos_theta = min(dot(-ray.direction, hit.normal), 1.0);
-      let sin_theta = sqrt(1.0 - cos_theta*cos_theta);
-      let cannot_refract = ir * sin_theta > 1.0;
-      if (cannot_refract || reflectance(cos_theta, ir) > fract(rng_float(state))) {
-          let direction = reflect(ray.direction, hit.normal);
-          return Ray(hit.point, normalize(direction));
-      } else {
-          let direction = refract(ray.direction, hit.normal, ir);
-          return Ray(hit.point, normalize(direction));
-      }
-      // return Ray(vec3f(), vec3f(0));
+      return Ray(hit.point, vec3f(1.0, 0.0, 0.0));
     }
   }
 }
