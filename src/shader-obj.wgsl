@@ -51,15 +51,10 @@ struct Triangle {
   a: vec4f,
   b: vec4f,
   c: vec4f,
-  material: Material,
-  next: u32,
 }
 struct Node {
   bound_min: vec4f,
   bound_max: vec4f,
-  triangle: u32,
-  child: u32,
-  next: u32,
 }
 struct HitRecord {
   point: vec3f,
@@ -74,6 +69,9 @@ struct Material {
     params: vec3f,
     // _padding: f32,
 }
+
+const DEFAULT_MATERIAL = Material(vec4f(0.3,0.4,0.5,1.0), MAT_LAMBERTIAN, vec4f(0));
+const EMPTY_HIT_RECORD = HitRecord(vec3f(), vec3f(), -1, DEFAULT_MATERIAL, false);
 
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
@@ -129,6 +127,46 @@ fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
     direction = focus_point - origin;
     return Ray(origin.xyz, direction.xyz);
 }
+
+fn intersect_node(r: Ray, node: Node) -> bool {
+  var t1 = (node.bound_min.x - r.origin.x)/r.direction.x;
+  var t2 = (node.bound_max.x - r.origin.x)r.direction.x;
+  var tmin = min(t1, t2);
+  var tmax = max(t1, t2);
+  t1 = (node.bound_min.y - r.origin.y)/r.direction.y;
+  t2 = (node.bound_max.y - r.origin.y)r.direction.y;
+  tmin = max(tmin, min(min(t1, t2), tmax));
+  tmax = min(tmax, max(max(t1, t2), tmin));
+  t1 = (node.bound_min.z - r.origin.z)/r.direction.z;
+  t2 = (node.bound_max.z - r.origin.z)r.direction.z;
+  tmin = max(tmin, min(min(t1, t2), tmax));
+  tmax = min(tmax, max(max(t1, t2), tmin));
+  return tmax > max(tmin, 0.0);
+}
+fn intersect_triangle(r: Ray, t: Triangle) -> HitRecord {
+  let e1 = t.b - t.a;
+  let e2 = t.c - t.a;
+  let normal = cross(e1, e2);
+  // Test if the ray intersects the plane of the triangle
+  let d = dot(normal, t.a - r.origin);
+  let ad = dot(r.direction, normal);
+  let front_face = ad < 0;
+  // Parallel ray or triangle is degenerate
+  if abs(ad) < EPSILON {
+    return EMPTY_HIT_RECORD;
+  }
+  // Parametric line intersection
+  let t = d / ad;
+  // Test if the intersection point is within the triangle
+  let p = r.origin + t * r.direction;
+  let q = cross(p - t.a, e1);
+  let s = cross(e2, p - t.a);
+  if dot(r.direction, q) <= 0.0 || dot(r.direction, s) <= 0.0 || dot(q, s) <= 0.0 {
+    return EMPTY_HIT_RECORD;
+  }
+  return HitRecord(p, normal, t, DEFAULT_MATERIAL, front_face});
+}
+
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
   let center = sphere.center_and_radius.xyz;
   let radius = sphere.center_and_radius.w;
@@ -138,7 +176,7 @@ fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
   let c = dot(oc, oc) - radius*radius;
   let discriminant = b*b - 4*a*c;
   if (discriminant < 0) {
-      return HitRecord(vec3f(), vec3f(), -1, sphere.material, false);
+      return EMPTY_HIT_RECORD;
   }
   let t = (-b - sqrt(discriminant) ) / (2*a);
   let hit_point = point_on_ray(ray, t);
@@ -211,12 +249,7 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
     }
   }
 }
-fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
-  var ret = vec4f(0);
-  var attenuation = vec3f(1);
-  var current_ray = ray;
-  var first_hit = true;
-  for(var b = 0;b < BOUNCE_MAX; b++) {
+fn intersect_all_sphere(ray: Ray) -> HitRecord {
     var closest_hit: HitRecord;
     closest_hit.t = FLT_MAX;
     for (var i = 0u; i < arrayLength(&scene); i++) {
@@ -226,6 +259,35 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
         closest_hit = hit;
       }
     }
+    return closest_hit;
+}
+
+fn intersect_all_triangle_node(ray: Ray, node_idx: u32) -> HitRecord {
+    if node_idx >= arrayLength(triangles) {
+      return intersect_triangle(ray, triangles[node_idx - arrayLength(triangles)]);
+    }
+    if !intersect_node(ray, nodes[node_idx]) {
+      return EMPTY_HIT_RECORD;
+    }
+    let hit_left = intersect_all_triangle_node(ray, node_idx*2);
+    let hit_right = intersect_all_triangle_node(ray, node_idx*2+1);
+    if hit_left.t < hit_right.t {
+      return hit_left;
+    }
+    return hit_right;
+}
+fn intersect_all_triangle(ray: Ray) -> HitRecord {
+    return intersect_all_triangle_node(ray, 1);
+}
+
+fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
+  var ret = vec4f(0);
+  var attenuation = vec3f(1);
+  var current_ray = ray;
+  var first_hit = true;
+  for(var b = 0;b < BOUNCE_MAX; b++) {
+    let closest_hit = intersect_all_triangle(ray);
+    // let closest_hit = intersect_all_sphere(ray);
     if abs(closest_hit.t - FLT_MAX) < EPSILON {
       break;
     }
