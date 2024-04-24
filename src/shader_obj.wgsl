@@ -9,7 +9,7 @@ const SKY = vec3f(0.54, 0.86, 0.92);
 const BLUE = vec3f(0.54, 0.7, 0.98);
 const SAMPLE_FRAME = 1000;
 const SAMPLE_PER_FRAME = 1;
-const BOUNCE_MAX = 10;
+const BOUNCE_MAX = 5;
 
 @group(0) @binding(0)
 var<uniform> resolution: vec2u;
@@ -25,9 +25,9 @@ var<uniform> camera: Camera;
 var<storage> nodes: array<Node>;
 @group(1) @binding(2) 
 var<storage> indices: array<u32>;
-@group(1) @binding(2) 
+@group(1) @binding(3) 
 var<storage> vertices: array<vec4f>;
-@group(1) @binding(2) 
+@group(1) @binding(4) 
 var<storage> normals: array<vec4f>;
 
 struct Camera {
@@ -43,9 +43,6 @@ struct Camera {
 struct Ray {
   origin: vec3f,
   direction: vec3f,
-}
-struct Triangle {
-  abc_normal: vec4u,
 }
 struct Node {
   bound_min: vec4f,
@@ -65,8 +62,9 @@ struct Material {
     // _padding: f32,
 }
 
-const DEFAULT_MATERIAL = Material(vec4f(0.3,0.4,0.5,1.0), MAT_LAMBERTIAN, vec4f(0));
-const EMPTY_HIT_RECORD = HitRecord(vec3f(), vec3f(), -1, DEFAULT_MATERIAL, false);
+const DEFAULT_MATERIAL = Material(vec4f(0.0,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
+const EMPTY_HIT_RECORD = HitRecord(vec3f(), vec3f(), FLT_MAX, DEFAULT_MATERIAL, false);
+const YELLOW_MATERIAL = Material(vec4f(0.8,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
 
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
@@ -126,26 +124,27 @@ fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
 }
 
 fn intersect_node(r: Ray, node: Node) -> bool {
+  // something went wrong here
   var t1 = (node.bound_min.x - r.origin.x)/r.direction.x;
-  var t2 = (node.bound_max.x - r.origin.x)r.direction.x;
+  var t2 = (node.bound_max.x - r.origin.x)/r.direction.x;
   var tmin = min(t1, t2);
   var tmax = max(t1, t2);
   t1 = (node.bound_min.y - r.origin.y)/r.direction.y;
-  t2 = (node.bound_max.y - r.origin.y)r.direction.y;
+  t2 = (node.bound_max.y - r.origin.y)/r.direction.y;
   tmin = max(tmin, min(min(t1, t2), tmax));
   tmax = min(tmax, max(max(t1, t2), tmin));
   t1 = (node.bound_min.z - r.origin.z)/r.direction.z;
-  t2 = (node.bound_max.z - r.origin.z)r.direction.z;
+  t2 = (node.bound_max.z - r.origin.z)/r.direction.z;
   tmin = max(tmin, min(min(t1, t2), tmax));
   tmax = min(tmax, max(max(t1, t2), tmin));
-  return tmax > max(tmin, 0.0);
+  return tmax > max(tmin, 0.0) || true;
 }
 
 fn intersect_triangle(r: Ray, t: u32) -> HitRecord {
-  let a = vertices[indices[t*3]];
-  let b = vertices[indices[t*3+1]];
-  let c = vertices[indices[t*3+2]];
-  let normal = normals[t];
+  let a = vertices[indices[t*3]].xyz;
+  let b = vertices[indices[t*3+1]].xyz;
+  let c = vertices[indices[t*3+2]].xyz;
+  let normal = normals[t].xyz;
   let e1 = b - a;
   let e2 = c - a;
   let rxe2 = cross(r.direction, e2);
@@ -172,7 +171,7 @@ fn intersect_triangle(r: Ray, t: u32) -> HitRecord {
   }
   let p = r.origin + w * r.direction;
   let front_face = dot(normal, r.direction) > 0;
-  return HitRecord(p, normal, w, DEFAULT_MATERIAL, front_face);
+  return HitRecord(p, normal, w, YELLOW_MATERIAL, front_face);
 }
 
 fn reflect(v: vec3f, n: vec3f) -> vec3f {
@@ -238,19 +237,35 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
   }
 }
 
-fn intersect_all_node(ray: Ray, node_idx: u32) -> HitRecord {
-    if node_idx >= arrayLength(indices)/3 {
-      return intersect_triangle(ray, node_idx - arrayLength(indices)/3);
+fn intersect_all_node(ray: Ray) -> HitRecord {
+    var i = 1u;
+    var closest_hit = EMPTY_HIT_RECORD;
+    let n = 1024u; // arrayLength(nodes)
+    let m = 967u; // arrayLength(normals)
+    loop {
+      if i < n && intersect_node(ray, nodes[i]) {
+        i *= 2u;
+        continue;
+      }
+      if i >= n {
+        let j = i - n;
+        if j >= m {
+          break;
+        }
+        let hit = intersect_triangle(ray, j);
+        if hit.t < closest_hit.t {
+          closest_hit = hit;
+        }
+      }
+      if i%2u == 1u {
+        i /= 2u;
+      }
+      if i == 1u {
+        break;
+      }
+      i++;
     }
-    if !intersect_node(ray, nodes[node_idx]) {
-      return EMPTY_HIT_RECORD;
-    }
-    let hit_left = intersect_all_node(ray, node_idx*2);
-    let hit_right = intersect_all_node(ray, node_idx*2+1);
-    if hit_left.t < hit_right.t {
-      return hit_left;
-    }
-    return hit_right;
+    return closest_hit;
 }
 
 fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
@@ -259,7 +274,7 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
   var current_ray = ray;
   var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
-    let closest_hit = intersect_all_node(ray, 1);
+    let closest_hit = intersect_all_node(ray);
     if abs(closest_hit.t - FLT_MAX) < EPSILON {
       break;
     }

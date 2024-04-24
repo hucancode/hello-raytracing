@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use glam::{Vec3, Vec4};
+use glam::Vec4;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -24,7 +24,7 @@ impl Node {
             bound_max,
         }
     }
-    pub fn refit_xyzw(&mut self, xyzw: [f32;4]) {
+    pub fn refit_xyzw(&mut self, xyzw: [f32; 4]) {
         self.refit(Vec4::from_array(xyzw))
     }
     pub fn refit(&mut self, vertex: Vec4) {
