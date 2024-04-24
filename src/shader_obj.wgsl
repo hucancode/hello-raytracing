@@ -24,9 +24,11 @@ var<uniform> camera: Camera;
 @group(1) @binding(1) 
 var<storage> nodes: array<Node>;
 @group(1) @binding(2) 
-var<storage> triangles: array<Triangle>;
-@group(1) @binding(3) 
-var<storage> scene: array<Sphere>;
+var<storage> indices: array<u32>;
+@group(1) @binding(2) 
+var<storage> vertices: array<vec4f>;
+@group(1) @binding(2) 
+var<storage> normals: array<vec4f>;
 
 struct Camera {
   eye: vec4f,
@@ -42,15 +44,8 @@ struct Ray {
   origin: vec3f,
   direction: vec3f,
 }
-struct Sphere {
-  center_and_radius: vec4f,
-  material: Material,
-  // _padding: vec4f,
-}
 struct Triangle {
-  a: vec4f,
-  b: vec4f,
-  c: vec4f,
+  abc_normal: vec4u,
 }
 struct Node {
   bound_min: vec4f,
@@ -109,11 +104,13 @@ fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
   }
   return -v;
 }
+
 fn random_on_disk(state: ptr<function, u32>, radius: f32) -> vec3f {
   let v = normalize(rng_vec2(state));
   let r = rng_float(state)*radius;
   return vec3f(v, 0.0)*r;
 }
+
 fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
     let k = tan(camera.fov*0.5);
     let x = camera.right*uv.x*k;
@@ -143,50 +140,41 @@ fn intersect_node(r: Ray, node: Node) -> bool {
   tmax = min(tmax, max(max(t1, t2), tmin));
   return tmax > max(tmin, 0.0);
 }
-fn intersect_triangle(r: Ray, t: Triangle) -> HitRecord {
-  let e1 = t.b - t.a;
-  let e2 = t.c - t.a;
-  let normal = cross(e1, e2);
-  // Test if the ray intersects the plane of the triangle
-  let d = dot(normal, t.a - r.origin);
-  let ad = dot(r.direction, normal);
-  let front_face = ad < 0;
-  // Parallel ray or triangle is degenerate
-  if abs(ad) < EPSILON {
+
+fn intersect_triangle(r: Ray, t: u32) -> HitRecord {
+  let a = vertices[indices[t*3]];
+  let b = vertices[indices[t*3+1]];
+  let c = vertices[indices[t*3+2]];
+  let normal = normals[t];
+  let e1 = b - a;
+  let e2 = c - a;
+  let rxe2 = cross(r.direction, e2);
+  let det = dot(e1, rxe2);
+  // ray is parallel with the plane
+  if abs(det) < EPSILON {
     return EMPTY_HIT_RECORD;
   }
-  // Parametric line intersection
-  let t = d / ad;
-  // Test if the intersection point is within the triangle
-  let p = r.origin + t * r.direction;
-  let q = cross(p - t.a, e1);
-  let s = cross(e2, p - t.a);
-  if dot(r.direction, q) <= 0.0 || dot(r.direction, s) <= 0.0 || dot(q, s) <= 0.0 {
+  let inv_det = 1/det;
+  let s = r.origin - a;
+  let u = inv_det * dot(s, rxe2);
+  if (u < 0 || u > 1) {
     return EMPTY_HIT_RECORD;
   }
-  return HitRecord(p, normal, t, DEFAULT_MATERIAL, front_face});
+  let sxe1 = cross(s, e1);
+  let v = inv_det * dot(r.direction, sxe1);
+  if (v < 0 || u + v > 1) {
+    return EMPTY_HIT_RECORD;
+  }
+  let w = inv_det * dot(e2, sxe1);
+  if w < EPSILON {
+    // the triangle sit behind the ray 
+    return EMPTY_HIT_RECORD;
+  }
+  let p = r.origin + w * r.direction;
+  let front_face = dot(normal, r.direction) > 0;
+  return HitRecord(p, normal, w, DEFAULT_MATERIAL, front_face);
 }
 
-fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
-  let center = sphere.center_and_radius.xyz;
-  let radius = sphere.center_and_radius.w;
-  let oc = ray.origin - center;
-  let a = dot(ray.direction, ray.direction);
-  let b = 2 * dot(oc, ray.direction);
-  let c = dot(oc, oc) - radius*radius;
-  let discriminant = b*b - 4*a*c;
-  if (discriminant < 0) {
-      return EMPTY_HIT_RECORD;
-  }
-  let t = (-b - sqrt(discriminant) ) / (2*a);
-  let hit_point = point_on_ray(ray, t);
-  var normal = (hit_point - center) / radius;
-  let front_face = dot(ray.direction, normal) < 0;
-  if !front_face {
-    normal = -normal;
-  }
-  return HitRecord(hit_point, normal, t, sphere.material, front_face);
-}
 fn reflect(v: vec3f, n: vec3f) -> vec3f {
     return v - 2*dot(v,n)*n;
 }
@@ -249,35 +237,20 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
     }
   }
 }
-fn intersect_all_sphere(ray: Ray) -> HitRecord {
-    var closest_hit: HitRecord;
-    closest_hit.t = FLT_MAX;
-    for (var i = 0u; i < arrayLength(&scene); i++) {
-      let obj = scene[i];
-      let hit = intersect_sphere(current_ray, obj);
-      if hit.t > 0 && hit.t < closest_hit.t {
-        closest_hit = hit;
-      }
-    }
-    return closest_hit;
-}
 
-fn intersect_all_triangle_node(ray: Ray, node_idx: u32) -> HitRecord {
-    if node_idx >= arrayLength(triangles) {
-      return intersect_triangle(ray, triangles[node_idx - arrayLength(triangles)]);
+fn intersect_all_node(ray: Ray, node_idx: u32) -> HitRecord {
+    if node_idx >= arrayLength(indices)/3 {
+      return intersect_triangle(ray, node_idx - arrayLength(indices)/3);
     }
     if !intersect_node(ray, nodes[node_idx]) {
       return EMPTY_HIT_RECORD;
     }
-    let hit_left = intersect_all_triangle_node(ray, node_idx*2);
-    let hit_right = intersect_all_triangle_node(ray, node_idx*2+1);
+    let hit_left = intersect_all_node(ray, node_idx*2);
+    let hit_right = intersect_all_node(ray, node_idx*2+1);
     if hit_left.t < hit_right.t {
       return hit_left;
     }
     return hit_right;
-}
-fn intersect_all_triangle(ray: Ray) -> HitRecord {
-    return intersect_all_triangle_node(ray, 1);
 }
 
 fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
@@ -286,8 +259,7 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
   var current_ray = ray;
   var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
-    let closest_hit = intersect_all_triangle(ray);
-    // let closest_hit = intersect_all_sphere(ray);
+    let closest_hit = intersect_all_node(ray, 1);
     if abs(closest_hit.t - FLT_MAX) < EPSILON {
       break;
     }

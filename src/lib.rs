@@ -1,6 +1,7 @@
 mod app;
 mod renderer;
 mod scene;
+mod geometry;
 use crate::app::App;
 use std::{sync::Arc, time::Instant};
 use winit::{

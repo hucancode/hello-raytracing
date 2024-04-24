@@ -1,8 +1,11 @@
 mod camera;
 mod material;
 mod sphere;
+mod bvh;
 use std::f32::consts::PI;
 
+pub use bvh::Tree;
+pub use bvh::Node;
 pub use camera::Camera;
 use glam::Vec3;
 pub use material::Material;
@@ -14,6 +17,7 @@ pub use sphere::Sphere;
 pub struct Scene {
     pub camera: Camera,
     pub objects: Vec<Sphere>,
+    pub triangles: Tree,
 }
 
 impl Scene {
@@ -58,7 +62,7 @@ impl Scene {
                 }
             }
         }
-        Self { camera, objects }
+        Self { camera, objects, triangles: Default::default() }
     }
     pub fn new_simple() -> Self {
         let yellow = Vec3::new(0.98, 0.89, 0.69);
@@ -82,6 +86,6 @@ impl Scene {
             Sphere::new_metal(Vec3::new(-0.3, -0.4, -0.4), 0.1, blue, 0.9),
             Sphere::new_dielectric(Vec3::new(0.2, -0.38, -0.16), 0.12, 0.1),
         ];
-        Self { camera, objects }
+        Self { camera, objects, triangles: Default::default() }
     }
 }

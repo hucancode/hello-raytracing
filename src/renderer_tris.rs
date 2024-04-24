@@ -52,7 +52,7 @@ const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 const MAX_IMAGE_BUFFER_SIZE: u32 = 4096 * 4096;
 const MAX_OBJECT_IN_SCENE: u64 = 100;
 
-pub struct Renderer {
+pub struct RendererTris {
     device: Device,
     surface: Surface<'static>,
     queue: Queue,
@@ -69,7 +69,7 @@ pub struct Renderer {
     bind_group_scene: BindGroup,
     frame_count: u32,
 }
-impl Renderer {
+impl RendererTris {
     pub async fn new(window: Arc<Window>) -> Renderer {
         let mut size = window.inner_size();
         size.width = size.width.max(1);
