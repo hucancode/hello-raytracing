@@ -124,20 +124,16 @@ fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
 }
 
 fn intersect_node(r: Ray, node: Node) -> bool {
-  // something went wrong here
-  var t1 = (node.bound_min.x - r.origin.x)/r.direction.x;
-  var t2 = (node.bound_max.x - r.origin.x)/r.direction.x;
-  var tmin = min(t1, t2);
-  var tmax = max(t1, t2);
-  t1 = (node.bound_min.y - r.origin.y)/r.direction.y;
-  t2 = (node.bound_max.y - r.origin.y)/r.direction.y;
-  tmin = max(tmin, min(min(t1, t2), tmax));
-  tmax = min(tmax, max(max(t1, t2), tmin));
-  t1 = (node.bound_min.z - r.origin.z)/r.direction.z;
-  t2 = (node.bound_max.z - r.origin.z)/r.direction.z;
-  tmin = max(tmin, min(min(t1, t2), tmax));
-  tmax = min(tmax, max(max(t1, t2), tmin));
-  return tmax > max(tmin, 0.0) || true;
+  let size = (node.bound_max - node.bound_min).xyz;
+  let ro = r.origin - node.bound_min.xyz;
+  let inv_dir = 1.0/r.direction;
+  let n = inv_dir*ro;
+  let k = abs(inv_dir)*size;
+  let t1 = -k - n;
+  let t2 = k -n;
+  let tmax = max( max( t1.x, t1.y ), t1.z );
+  let tmin = min( min( t2.x, t2.y ), t2.z );
+  return tmax <= tmin && tmin >= 0.0;
 }
 
 fn intersect_triangle(r: Ray, t: u32) -> HitRecord {
