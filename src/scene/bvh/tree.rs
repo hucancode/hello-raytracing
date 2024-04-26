@@ -3,23 +3,12 @@ use crate::scene::bvh::Node;
 use std::cmp::{min, Ordering};
 use std::collections::VecDeque;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Tree {
     pub nodes: Vec<Node>,
     pub indices: Vec<u32>,
     pub vertices: Vec<[f32; 4]>,
     pub normals: Vec<[f32; 4]>,
-}
-
-impl Default for Tree {
-    fn default() -> Self {
-        Self {
-            nodes: Vec::new(),
-            indices: Vec::new(),
-            vertices: Vec::new(),
-            normals: Vec::new(),
-        }
-    }
 }
 
 impl From<Mesh> for Tree {
