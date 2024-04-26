@@ -238,11 +238,13 @@ fn intersect_all_node(ray: Ray) -> HitRecord {
     var closest_hit = EMPTY_HIT_RECORD;
     let n = 1024u; // arrayLength(nodes)
     let m = 967u; // arrayLength(normals)
-    loop {
+    var step = 0;
+    while step < 100 {
       if i < n && intersect_node(ray, nodes[i]) {
         i *= 2u;
         continue;
       }
+      step++;
       if i >= n {
         let j = i - n;
         if j >= m {
