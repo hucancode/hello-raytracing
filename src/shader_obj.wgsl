@@ -29,6 +29,8 @@ var<storage> indices: array<u32>;
 var<storage> vertices: array<vec4f>;
 @group(1) @binding(4) 
 var<storage> normals: array<vec4f>;
+@group(1) @binding(5) 
+var<uniform> bvh_tree_size: vec2u;
 
 struct Camera {
   eye: vec4f,
@@ -64,7 +66,7 @@ struct Material {
 
 const DEFAULT_MATERIAL = Material(vec4f(0.0,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
 const EMPTY_HIT_RECORD = HitRecord(vec3f(), vec3f(), FLT_MAX, DEFAULT_MATERIAL, false);
-const YELLOW_MATERIAL = Material(vec4f(0.8,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
+const YELLOW_MATERIAL = Material(vec4f(1.0,1.0,0.0,1.0), MAT_METAL, vec3f(0.5));
 
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
@@ -143,6 +145,7 @@ fn intersect_triangle(r: Ray, t: u32) -> HitRecord {
   let normal = normals[t].xyz;
   let e1 = b - a;
   let e2 = c - a;
+  // let e3 = r.origin - a;
   let rxe2 = cross(r.direction, e2);
   let det = dot(e1, rxe2);
   // ray is parallel with the plane
@@ -236,8 +239,8 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
 fn intersect_all_node(ray: Ray) -> HitRecord {
     var i = 1u;
     var closest_hit = EMPTY_HIT_RECORD;
-    let n = 1024u; // arrayLength(nodes)
-    let m = 967u; // arrayLength(normals)
+    let n = bvh_tree_size.x;
+    let m = bvh_tree_size.y;
     var step = 0;
     while step < 100 {
       if i < n && intersect_node(ray, nodes[i]) {
@@ -294,6 +297,7 @@ fn fs_main_test_rng(@builtin(position) position: vec4f) -> @location(0) vec4f {
   var rng_state = (u32(position.x)*resolution.y + u32(position.y)) * time;
   return vec4f(rng_vec3(&rng_state), 1.0);
 }
+
 @fragment
 fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   var rng_state = (u32(position.x)*resolution.y + u32(position.y)) * time;

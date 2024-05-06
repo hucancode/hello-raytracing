@@ -9,6 +9,7 @@ pub struct Tree {
     pub indices: Vec<u32>,
     pub vertices: Vec<[f32; 4]>,
     pub normals: Vec<[f32; 4]>,
+    pub sizes: [u32; 2],
 }
 
 impl From<Mesh> for Tree {
@@ -67,11 +68,15 @@ impl From<Mesh> for Tree {
             }
         }
         let indices = triangles.into_iter().map(|(_, t)| t).flatten().collect();
+        let n = nodes.len() as u32;
+        let m = normals.len() as u32;
+        println!("{n} {m}");
         Self {
             vertices,
             indices,
             normals,
             nodes,
+            sizes: [n, m],
         }
     }
 }

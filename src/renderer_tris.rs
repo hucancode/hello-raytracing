@@ -69,6 +69,7 @@ pub struct RendererTris {
     indices_buffer: Buffer,
     vertices_buffer: Buffer,
     normals_buffer: Buffer,
+    bvh_tree_size_buffer: Buffer,
     bind_group_global_input: BindGroup,
     bind_group_scene: BindGroup,
     frame_count: u32,
@@ -215,6 +216,16 @@ impl RendererTris {
                     },
                     count: None,
                 },
+                BindGroupLayoutEntry {
+                    binding: 5, // bvh sizes
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         println!("creating pipeline layout");
@@ -318,6 +329,12 @@ impl RendererTris {
             mapped_at_creation: false,
             label: None,
         });
+        let bvh_tree_size_buffer = device.create_buffer(&BufferDescriptor {
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            size: 2 * size_of::<u32>() as BufferAddress,
+            mapped_at_creation: false,
+            label: None,
+        });
         let bind_group_scene = device.create_bind_group(&BindGroupDescriptor {
             layout: &bind_group_layout_scene,
             entries: &[
@@ -341,6 +358,10 @@ impl RendererTris {
                     binding: 4,
                     resource: normals_buffer.as_entire_binding(),
                 },
+                BindGroupEntry {
+                    binding: 5,
+                    resource: bvh_tree_size_buffer.as_entire_binding(),
+                },
             ],
             label: None,
         });
@@ -361,6 +382,7 @@ impl RendererTris {
             indices_buffer,
             vertices_buffer,
             normals_buffer,
+            bvh_tree_size_buffer,
             bind_group_global_input,
             bind_group_scene,
             frame_count: 0,
@@ -397,6 +419,9 @@ impl RendererTris {
         let n = min(data.len(), 4 * MAX_TRIS as usize * size_of::<u32>());
         self.queue
             .write_buffer(&self.normals_buffer, 0, &data[0..n]);
+        let data = bytemuck::cast_slice(&scene.triangles.sizes);
+        self.queue
+            .write_buffer(&self.bvh_tree_size_buffer, 0, &data);
     }
 
     pub fn set_time(&mut self, time: u32) {
