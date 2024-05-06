@@ -9,7 +9,7 @@ const SKY = vec3f(0.54, 0.86, 0.92);
 const BLUE = vec3f(0.54, 0.7, 0.98);
 const SAMPLE_FRAME = 1000;
 const SAMPLE_PER_FRAME = 1;
-const BOUNCE_MAX = 5;
+const BOUNCE_MAX = 10;
 
 @group(0) @binding(0)
 var<uniform> resolution: vec2u;
@@ -66,7 +66,7 @@ struct Material {
 
 const DEFAULT_MATERIAL = Material(vec4f(0.0,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
 const EMPTY_HIT_RECORD = HitRecord(vec3f(), vec3f(), FLT_MAX, DEFAULT_MATERIAL, false);
-const YELLOW_MATERIAL = Material(vec4f(1.0,1.0,0.0,1.0), MAT_METAL, vec3f(0.5));
+const YELLOW_MATERIAL = Material(vec4f(0.5,0.5,0.6,1.0), MAT_LAMBERTIAN, vec3f());
 
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
@@ -142,34 +142,21 @@ fn intersect_triangle(r: Ray, t: u32) -> HitRecord {
   let a = vertices[indices[t*3]].xyz;
   let b = vertices[indices[t*3+1]].xyz;
   let c = vertices[indices[t*3+2]].xyz;
-  let normal = normals[t].xyz;
   let e1 = b - a;
   let e2 = c - a;
-  // let e3 = r.origin - a;
+  let e3 = r.origin - a;
+  let normal = normals[t].xyz; // cross(e1, e2);
   let rxe2 = cross(r.direction, e2);
-  let det = dot(e1, rxe2);
-  // ray is parallel with the plane
-  if abs(det) < EPSILON {
-    return EMPTY_HIT_RECORD;
-  }
-  let inv_det = 1/det;
-  let s = r.origin - a;
-  let u = inv_det * dot(s, rxe2);
-  if (u < 0 || u > 1) {
-    return EMPTY_HIT_RECORD;
-  }
-  let sxe1 = cross(s, e1);
-  let v = inv_det * dot(r.direction, sxe1);
-  if (v < 0 || u + v > 1) {
-    return EMPTY_HIT_RECORD;
-  }
-  let w = inv_det * dot(e2, sxe1);
-  if w < EPSILON {
-    // the triangle sit behind the ray 
-    return EMPTY_HIT_RECORD;
-  }
-  let p = r.origin + w * r.direction;
+  let e3xe1 = cross(e3, e1);
+  let d = 1.0/dot(e1, rxe2);
+  let u = d * dot(e3, rxe2);
+  let v = d * dot(r.direction, e3xe1);
+  let w = d * dot(e2, e3xe1);
+  let p = r.origin + w * 0.99999 * r.direction;
   let front_face = dot(normal, r.direction) > 0;
+  if (u < 0 || u > 1 || v < 0 || u + v > 1) {
+    return EMPTY_HIT_RECORD;
+  }
   return HitRecord(p, normal, w, YELLOW_MATERIAL, front_face);
 }
 
@@ -189,6 +176,8 @@ fn reflectance(cosine: f32, ref_idx: f32) -> f32 {
     r0 = r0*r0;
     return r0 + (1-r0)*pow((1 - cosine), 5.0);
 }
+
+// seems like the scatter function doesn't do well with triangles
 fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
   switch hit.material.id {
     case MAT_LAMBERTIAN: {
@@ -270,8 +259,7 @@ fn intersect_all_node(ray: Ray) -> HitRecord {
 }
 
 fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
-  var ret = vec4f(0);
-  var attenuation = vec3f(1);
+  var attenuation = vec3f(0);
   var current_ray = ray;
   var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
@@ -281,10 +269,10 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
     }
     current_ray = scatter(state, current_ray, closest_hit);
     if first_hit {
-      attenuation = closest_hit.material.albedo.rgb;
+      attenuation += vec3f(0.2);
       first_hit = false;
     } else {
-      attenuation *= closest_hit.material.albedo.rgb;
+      attenuation += vec3f(0.2);
     }
   }
   let sky = mix(SKY, BLUE, ray.direction.y*0.5 + 0.5);
