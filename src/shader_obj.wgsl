@@ -7,9 +7,10 @@ const MAT_METAL = 2u;
 const MAT_DIELECTRIC = 3u;
 const SKY = vec3f(0.54, 0.86, 0.92);
 const BLUE = vec3f(0.54, 0.7, 0.98);
+const RED = vec3f(0.98, 0.2, 0.2);
 const SAMPLE_FRAME = 1000;
 const SAMPLE_PER_FRAME = 1;
-const BOUNCE_MAX = 10;
+const BOUNCE_MAX = 5;
 
 @group(0) @binding(0)
 var<uniform> resolution: vec2u;
@@ -121,7 +122,7 @@ fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
     // focus blur
     let focus_point = origin + direction*camera.focal_length;
     origin += vec4f(random_on_disk(state, camera.focal_blur_amount), 1.0);
-    direction = focus_point - origin;
+    direction = normalize(focus_point - origin);
     return Ray(origin.xyz, direction.xyz);
 }
 
@@ -138,26 +139,29 @@ fn intersect_node(r: Ray, node: Node) -> bool {
   return tmax <= tmin && tmin >= 0.0;
 }
 
-fn intersect_triangle(r: Ray, t: u32) -> HitRecord {
+fn intersect_triangle(r: Ray, t: u32, ret: ptr<function, HitRecord>) {
   let a = vertices[indices[t*3]].xyz;
   let b = vertices[indices[t*3+1]].xyz;
   let c = vertices[indices[t*3+2]].xyz;
-  let e1 = b - a;
-  let e2 = c - a;
-  let e3 = r.origin - a;
-  let normal = normals[t].xyz; // cross(e1, e2);
-  let rxe2 = cross(r.direction, e2);
-  let e3xe1 = cross(e3, e1);
-  let d = 1.0/dot(e1, rxe2);
-  let u = d * dot(e3, rxe2);
-  let v = d * dot(r.direction, e3xe1);
-  let w = d * dot(e2, e3xe1);
-  let p = r.origin + w * 0.99999 * r.direction;
-  let front_face = dot(normal, r.direction) > 0;
-  if (u < 0 || u > 1 || v < 0 || u + v > 1) {
-    return EMPTY_HIT_RECORD;
+  let ab = b - a;
+  let ac = c - a;
+  let ar = r.origin - a;
+  // let normal = normals[t].xyz;
+  let normal = cross(ab, ac);
+  let rdxac = cross(r.direction, ac);
+  let arxab = cross(ar, ab);
+  let d = 1.0/dot(ab, rdxac);
+  let u = d * dot(ar, rdxac);
+  let v = d * dot(r.direction, arxab);
+  let w = d * dot(ac, arxab);
+  if (u < 0 || v < 0 || u + v > 1 || w < 0.001 || w > (*ret).t) {
+    return;
   }
-  return HitRecord(p, normal, w, YELLOW_MATERIAL, front_face);
+  (*ret).point = point_on_ray(r, w);
+  (*ret).normal = normalize(normal);
+  (*ret).t = w;
+  (*ret).material = YELLOW_MATERIAL;
+  (*ret).front_face = dot(normal, r.direction) > 0;
 }
 
 fn reflect(v: vec3f, n: vec3f) -> vec3f {
@@ -227,56 +231,49 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
 
 fn intersect_all_node(ray: Ray) -> HitRecord {
     var i = 1u;
-    var closest_hit = EMPTY_HIT_RECORD;
     let n = bvh_tree_size.x;
     let m = bvh_tree_size.y;
+    var ret = EMPTY_HIT_RECORD;
     var step = 0;
-    while step < 100 {
+    while step < 150 {
+      step++;
       if i < n && intersect_node(ray, nodes[i]) {
-        i *= 2u;
+        i *= 2u; // go to first children
         continue;
       }
-      step++;
       if i >= n {
         let j = i - n;
         if j >= m {
           break;
         }
-        let hit = intersect_triangle(ray, j);
-        if hit.t < closest_hit.t {
-          closest_hit = hit;
-        }
+        intersect_triangle(ray, j, &ret);
       }
-      if i%2u == 1u {
-        i /= 2u;
+      while (i&1u) == 1u {
+        i /= 2u; // return to parent
       }
-      if i == 1u {
+      if i == 0u {
         break;
       }
-      i++;
+      i++; // go to next sibling
     }
-    return closest_hit;
+    return ret;
 }
 
 fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
-  var attenuation = vec3f(0);
+  let sky = mix(SKY, RED, ray.direction.y*0.5 + 0.5);
+  var attenuation = vec3f(1);
   var current_ray = ray;
   var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
-    let closest_hit = intersect_all_node(ray);
+    var closest_hit = intersect_all_node(ray);
     if abs(closest_hit.t - FLT_MAX) < EPSILON {
-      break;
+      return attenuation;
     }
     current_ray = scatter(state, current_ray, closest_hit);
-    if first_hit {
-      attenuation += vec3f(0.2);
-      first_hit = false;
-    } else {
-      attenuation += vec3f(0.2);
-    }
+    // attenuation *= closest_hit.material.albedo.rgb;
+    attenuation *= closest_hit.normal;
   }
-  let sky = mix(SKY, BLUE, ray.direction.y*0.5 + 0.5);
-  return attenuation * sky;
+  return attenuation;
 }
 
 

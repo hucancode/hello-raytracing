@@ -96,10 +96,5 @@ mod tests {
         let mesh = Mesh::load_obj(include_bytes!("../../assets/suzanne.obj"));
         let tree: Tree = mesh.into();
         println!("tree = {tree:?}");
-        println!(
-            "nodes = {}, tris = {}",
-            tree.nodes.len(),
-            tree.normals.len()
-        );
     }
 }
