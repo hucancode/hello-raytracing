@@ -129,13 +129,13 @@ fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
 fn intersect_node(r: Ray, node: Node) -> bool {
   let size = (node.bound_max - node.bound_min).xyz;
   let ro = r.origin - node.bound_min.xyz;
-  let inv_dir = 1.0/r.direction;
-  let n = inv_dir*ro;
-  let k = abs(inv_dir)*size;
+  let d = 1.0/r.direction;
+  let n = d*ro;
+  let k = abs(d)*size;
   let t1 = -k - n;
-  let t2 = k -n;
-  let tmax = max( max( t1.x, t1.y ), t1.z );
-  let tmin = min( min( t2.x, t2.y ), t2.z );
+  let t2 = k - n;
+  let tmax = max(max(t1.x, t1.y), t1.z);
+  let tmin = min(min(t2.x, t2.y), t2.z);
   return tmax <= tmin && tmin >= 0.0;
 }
 
@@ -273,7 +273,7 @@ fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
     // attenuation *= closest_hit.material.albedo.rgb;
     attenuation *= closest_hit.normal;
   }
-  return attenuation;
+  return vec3f();
 }
 
 
