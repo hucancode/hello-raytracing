@@ -61,9 +61,9 @@ impl From<Mesh> for Tree {
         for (i, (_, t)) in triangles.iter().enumerate() {
             let mut j = (i + n) / 2;
             while j > 0 {
-                nodes[j].refit_xyzw(vertices[t[0] as usize]);
-                nodes[j].refit_xyzw(vertices[t[1] as usize]);
-                nodes[j].refit_xyzw(vertices[t[2] as usize]);
+                nodes[j].union(vertices[t[0] as usize]);
+                nodes[j].union(vertices[t[1] as usize]);
+                nodes[j].union(vertices[t[2] as usize]);
                 j /= 2;
             }
         }

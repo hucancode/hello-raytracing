@@ -67,7 +67,7 @@ struct Material {
 
 const DEFAULT_MATERIAL = Material(vec4f(0.0,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
 const EMPTY_HIT_RECORD = HitRecord(vec3f(), vec3f(), FLT_MAX, DEFAULT_MATERIAL, false);
-const YELLOW_MATERIAL = Material(vec4f(0.5,0.5,0.6,1.0), MAT_LAMBERTIAN, vec3f());
+const GRAY_MATERIAL = Material(vec4f(0.5,0.5,0.6,1.0), MAT_LAMBERTIAN, vec3f());
 
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
@@ -146,7 +146,7 @@ fn intersect_triangle(ray: Ray, triangle: u32, ret: ptr<function, HitRecord>) {
   let ac = c - a;
   let p = cross(ray.direction, ac);
   let det = dot(ab, p);
-  if det < 0 {
+  if abs(det) < EPSILON {
     return;
   }
   let ao = ray.origin - a;
@@ -162,9 +162,9 @@ fn intersect_triangle(ray: Ray, triangle: u32, ret: ptr<function, HitRecord>) {
     return;
   }
   (*ret).point = point_on_ray(ray, t);
-  (*ret).normal = normalize(normals[triangle].xyz);
+  (*ret).normal = normals[triangle].xyz;
   (*ret).t = t;
-  (*ret).material = YELLOW_MATERIAL;
+  (*ret).material = GRAY_MATERIAL;
   (*ret).front_face = dot((*ret).normal, ray.direction) > 0;
 }
 

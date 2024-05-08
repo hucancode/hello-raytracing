@@ -1,4 +1,4 @@
-pub mod tree;
 pub mod node;
-pub use tree::Tree;
+pub mod tree;
 pub use node::Node;
+pub use tree::Tree;
