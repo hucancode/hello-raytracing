@@ -70,7 +70,8 @@ impl SceneTris {
                 ), // vertices
             ],
             include_str!("../shaders/shader_tris.wgsl"),
-        ).await
+        )
+        .await
     }
     pub async fn new_suzane(window: Arc<Window>) -> Self {
         let mesh = Mesh::load_obj(

@@ -1,6 +1,6 @@
 use crate::scene::{Scene, SceneSphere, SceneTris};
-use std::{i8, sync::Arc, time::Instant};
 use rand::Rng;
+use std::{i8, sync::Arc, time::Instant};
 use winit::window::Window;
 pub struct App {
     scene: Box<dyn Scene>,
@@ -12,13 +12,13 @@ impl App {
         let j = rng.gen_range(1..=5);
         let i = args.get(1).map_or(j, |s| s.parse::<i8>().unwrap_or(j));
         let scene: Box<dyn Scene> = match i {
-                1 => Box::new(SceneSphere::new_simple(window).await),
-                2 => Box::new(SceneSphere::new(window).await),
-                3 => Box::new(SceneTris::new_quad(window).await),
-                4 => Box::new(SceneTris::new_cube(window).await),
-                _ => Box::new(SceneTris::new_suzane(window).await),
+            1 => Box::new(SceneSphere::new_simple(window).await),
+            2 => Box::new(SceneSphere::new(window).await),
+            3 => Box::new(SceneTris::new_quad(window).await),
+            4 => Box::new(SceneTris::new_cube(window).await),
+            _ => Box::new(SceneTris::new_suzane(window).await),
         };
-        Self {scene}
+        Self { scene }
     }
     pub fn init(&mut self) {
         let app_init_timestamp = Instant::now();
