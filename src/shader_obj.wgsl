@@ -95,7 +95,6 @@ fn point_on_ray(ray: Ray, t: f32) -> vec3f {
   return ray.origin + t * ray.direction;
 }
 fn random_on_hemisphere(state: ptr<function, u32>, normal: vec3f) -> vec3f {
-  let t = f32(time);
   let v = normalize(rng_vec3(state));
   if length(v) < EPSILON {
     return normal;
@@ -139,29 +138,34 @@ fn intersect_node(r: Ray, node: Node) -> bool {
   return tmax <= tmin && tmin >= 0.0;
 }
 
-fn intersect_triangle(r: Ray, t: u32, ret: ptr<function, HitRecord>) {
-  let a = vertices[indices[t*3]].xyz;
-  let b = vertices[indices[t*3+1]].xyz;
-  let c = vertices[indices[t*3+2]].xyz;
+fn intersect_triangle(ray: Ray, triangle: u32, ret: ptr<function, HitRecord>) {
+  let a = vertices[indices[triangle*3]].xyz;
+  let b = vertices[indices[triangle*3+1]].xyz;
+  let c = vertices[indices[triangle*3+2]].xyz;
   let ab = b - a;
   let ac = c - a;
-  let ar = r.origin - a;
-  // let normal = normals[t].xyz;
-  let normal = cross(ab, ac);
-  let rdxac = cross(r.direction, ac);
-  let arxab = cross(ar, ab);
-  let d = 1.0/dot(ab, rdxac);
-  let u = d * dot(ar, rdxac);
-  let v = d * dot(r.direction, arxab);
-  let w = d * dot(ac, arxab);
-  if (u < 0 || v < 0 || u + v > 1 || w < 0.001 || w > (*ret).t) {
+  let p = cross(ray.direction, ac);
+  let det = dot(ab, p);
+  if det < 0 {
     return;
   }
-  (*ret).point = point_on_ray(r, w);
-  (*ret).normal = normalize(normal);
-  (*ret).t = w;
+  let ao = ray.origin - a;
+  let inv_det = 1/det;
+  let aoxab = cross(ao, ab);
+  let u = inv_det * dot(ao, p);
+  let v = inv_det * dot(ray.direction, aoxab);
+  if (u < 0 || v < 0 || u + v > 1) {
+    return;
+  }
+  let t = inv_det * dot(ac, aoxab);
+  if (t < EPSILON || t > (*ret).t) {
+    return;
+  }
+  (*ret).point = point_on_ray(ray, t);
+  (*ret).normal = normalize(normals[triangle].xyz);
+  (*ret).t = t;
   (*ret).material = YELLOW_MATERIAL;
-  (*ret).front_face = dot(normal, r.direction) > 0;
+  (*ret).front_face = dot((*ret).normal, ray.direction) > 0;
 }
 
 fn reflect(v: vec3f, n: vec3f) -> vec3f {
@@ -190,7 +194,7 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
     }
     case MAT_METAL: {
       let fuzziness = hit.material.params.x;
-      let direction = reflect(normalize(ray.direction), hit.normal) + fuzziness * random_on_hemisphere(state, hit.normal);
+      let direction = reflect(ray.direction, hit.normal) + fuzziness * random_on_hemisphere(state, hit.normal);
       return Ray(hit.point, normalize(direction));
     }
     case MAT_DIELECTRIC: {
@@ -235,7 +239,7 @@ fn intersect_all_node(ray: Ray) -> HitRecord {
     let m = bvh_tree_size.y;
     var ret = EMPTY_HIT_RECORD;
     var step = 0;
-    while step < 150 {
+    while step < 5000 {
       step++;
       if i < n && intersect_node(ray, nodes[i]) {
         i *= 2u; // go to first children
@@ -260,18 +264,17 @@ fn intersect_all_node(ray: Ray) -> HitRecord {
 }
 
 fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
-  let sky = mix(SKY, RED, ray.direction.y*0.5 + 0.5);
-  var attenuation = vec3f(1);
+  let sky = mix(SKY, BLUE, ray.direction.y*0.5 + 0.5);
+  var attenuation = sky;
   var current_ray = ray;
   var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
-    var closest_hit = intersect_all_node(ray);
-    if abs(closest_hit.t - FLT_MAX) < EPSILON {
+    var hit = intersect_all_node(current_ray);
+    if abs(hit.t - FLT_MAX) < EPSILON {
       return attenuation;
     }
-    current_ray = scatter(state, current_ray, closest_hit);
-    // attenuation *= closest_hit.material.albedo.rgb;
-    attenuation *= closest_hit.normal;
+    current_ray = scatter(state, current_ray, hit);
+    attenuation *= hit.material.albedo.rgb;
   }
   return vec3f();
 }

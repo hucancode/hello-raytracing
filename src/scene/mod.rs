@@ -103,7 +103,7 @@ impl Scene {
         let mesh = Mesh::load_obj(include_bytes!("../assets/suzanne.obj"));
         let tree: Tree = mesh.into();
         let camera = Camera::new(
-            Vec3::new(0.0, 0.2, 3.5),
+            Vec3::new(0.0, 2.2, 6.5),
             Vec3::new(0.0, 0.1, -3.0),
             2.2,
             0.0,
@@ -116,10 +116,10 @@ impl Scene {
         }
     }
     pub fn new_cube() -> Self {
-        let mesh = Mesh::load_obj(include_bytes!("../assets/cube.obj"));
+        let mesh = Mesh::load_obj(include_bytes!("../assets/cube2.obj"));
         let tree: Tree = mesh.into();
         let camera = Camera::new(
-            Vec3::new(0.0, 0.2, 3.5),
+            Vec3::new(0.0, 2.2, 6.5),
             Vec3::new(0.0, 0.1, -3.0),
             2.2,
             0.0,
