@@ -20,17 +20,17 @@ var<uniform> frame_count: u32;
 var<uniform> time: u32;
 @group(0) @binding(3)
 var<storage, read_write> image: array<f32>;
-@group(1) @binding(0)
+@group(0) @binding(4)
 var<uniform> camera: Camera;
-@group(1) @binding(1)
+@group(1) @binding(0)
 var<uniform> bvh_tree_size: vec2u;
-@group(1) @binding(2)
+@group(1) @binding(1)
 var<storage> nodes: array<Node>;
-@group(1) @binding(3)
+@group(1) @binding(2)
 var<storage> triangles: array<Triangle>;
-@group(1) @binding(4)
+@group(1) @binding(3)
 var<storage> materials: array<Material>;
-@group(1) @binding(5)
+@group(1) @binding(4)
 var<storage> vertices: array<vec4f>;
 
 struct Camera {

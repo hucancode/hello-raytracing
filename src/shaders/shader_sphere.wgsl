@@ -19,10 +19,10 @@ var<uniform> frame_count: u32;
 var<uniform> time: u32;
 @group(0) @binding(3)
 var<storage, read_write> image: array<f32>;
-@group(1) @binding(0) 
-var<storage> scene: array<Sphere>;
-@group(1) @binding(1) 
+@group(0) @binding(4)
 var<uniform> camera: Camera;
+@group(1) @binding(0)
+var<storage> scene: array<Sphere>;
 
 struct Camera {
   eye: vec4f,
@@ -32,7 +32,6 @@ struct Camera {
   focal_length: f32,
   focal_blur_amount: f32,
   fov: f32,
-  // _padding: vec3f,
 }
 struct Ray {
   origin: vec3f,
@@ -59,7 +58,6 @@ struct Material {
     albedo: vec4f,
     id: u32,
     params: vec3f,
-    // _padding: f32,
 }
 
 @vertex

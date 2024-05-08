@@ -56,7 +56,7 @@ impl Tree {
                     (a[1] + b[1] + c[1]) / 3.0,
                     (a[2] + b[2] + c[2]) / 3.0,
                 ];
-                (t.clone(), center)
+                (*t, center)
             })
             .collect();
         let m = triangles.len();

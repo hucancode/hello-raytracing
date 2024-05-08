@@ -1,7 +1,6 @@
 mod app;
 mod geometry;
 mod renderer;
-mod renderer_tris;
 mod scene;
 use crate::app::App;
 use std::{sync::Arc, time::Instant};
@@ -11,8 +10,8 @@ use winit::{
     window::Window,
 };
 
-pub async fn run(event_loop: EventLoop<()>, window: Arc<Window>) {
-    let mut app = App::new(window.clone()).await;
+pub async fn run(event_loop: EventLoop<()>, window: Arc<Window>, args: Vec<String>) {
+    let mut app = App::new(window.clone(), args).await;
     // let mut last_update_timestamp = Instant::now();
     let app_start_timestamp = Instant::now();
     let _ = event_loop.run(move |event, elwt| {

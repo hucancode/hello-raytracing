@@ -18,17 +18,11 @@ impl Default for Node {
 }
 
 impl Node {
-    pub fn new(bound_min: Vec4, bound_max: Vec4) -> Self {
-        Self {
-            bound_min,
-            bound_max,
-        }
-    }
     pub fn union(&mut self, xyzw: [f32; 4]) {
         self.refit(Vec4::from_array(xyzw))
     }
     pub fn refit(&mut self, vertex: Vec4) {
-        self.bound_min = self.bound_min.min(vertex.clone());
+        self.bound_min = self.bound_min.min(vertex);
         self.bound_max = self.bound_max.max(vertex);
     }
 }
