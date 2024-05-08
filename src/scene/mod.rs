@@ -103,10 +103,10 @@ impl Scene {
         let mesh = Mesh::load_obj(include_bytes!("../assets/suzanne.obj"));
         let tree: Tree = mesh.into();
         let camera = Camera::new(
-            Vec3::new(0.0, 2.2, 6.5),
-            Vec3::new(0.0, 0.1, -3.0),
-            2.2,
-            0.0,
+            Vec3::new(0.0, 2.2, 4.5),
+            Vec3::new(0.0, 0.0, -4.5),
+            5.6,
+            0.25,
             PI * 0.3,
         );
         Self {
