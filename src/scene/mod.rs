@@ -6,6 +6,7 @@ use std::f32::consts::PI;
 
 pub use bvh::Node;
 pub use bvh::Tree;
+pub use bvh::Triangle;
 pub use camera::Camera;
 use glam::Vec3;
 pub use material::Material;
@@ -19,7 +20,7 @@ use crate::geometry::Mesh;
 pub struct Scene {
     pub camera: Camera,
     pub objects: Vec<Sphere>,
-    pub triangles: Tree,
+    pub tris_bvh: Tree,
 }
 
 impl Scene {
@@ -67,7 +68,7 @@ impl Scene {
         Self {
             camera,
             objects,
-            triangles: Default::default(),
+            tris_bvh: Default::default(),
         }
     }
     pub fn new_simple() -> Self {
@@ -95,13 +96,22 @@ impl Scene {
         Self {
             camera,
             objects,
-            triangles: Default::default(),
+            tris_bvh: Default::default(),
         }
     }
 
     pub fn new_suzane() -> Self {
-        let mesh = Mesh::load_obj(include_bytes!("../assets/suzanne.obj"));
-        let tree: Tree = mesh.into();
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/suzanne.obj"),
+            Material::new_lambertian(Vec3::new(0.5, 0.5, 0.6)),
+        );
+        let mut tree: Tree = mesh.into();
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/cube2.obj"),
+            Material::new_metal(Vec3::new(0.5, 0.5, 0.6), 0.2),
+        );
+        tree.add_mesh(mesh);
+        tree.build();
         let camera = Camera::new(
             Vec3::new(0.0, 2.2, 4.5),
             Vec3::new(0.0, 0.0, -4.5),
@@ -112,12 +122,16 @@ impl Scene {
         Self {
             camera,
             objects: Vec::new(),
-            triangles: tree,
+            tris_bvh: tree,
         }
     }
     pub fn new_cube() -> Self {
-        let mesh = Mesh::load_obj(include_bytes!("../assets/cube2.obj"));
-        let tree: Tree = mesh.into();
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/cube2.obj"),
+            Material::new_lambertian(Vec3::new(0.5, 0.5, 0.6)),
+        );
+        let mut tree: Tree = mesh.into();
+        tree.build();
         let camera = Camera::new(
             Vec3::new(0.0, 2.2, 6.5),
             Vec3::new(0.0, 0.1, -3.0),
@@ -128,12 +142,16 @@ impl Scene {
         Self {
             camera,
             objects: Vec::new(),
-            triangles: tree,
+            tris_bvh: tree,
         }
     }
     pub fn new_quad() -> Self {
-        let mesh = Mesh::load_obj(include_bytes!("../assets/quad.obj"));
-        let tree: Tree = mesh.into();
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/quad.obj"),
+            Material::new_lambertian(Vec3::new(0.5, 0.5, 0.6)),
+        );
+        let mut tree: Tree = mesh.into();
+        tree.build();
         let camera = Camera::new(
             Vec3::new(0.0, 0.2, 3.5),
             Vec3::new(0.0, 0.1, -3.0),
@@ -144,7 +162,7 @@ impl Scene {
         Self {
             camera,
             objects: Vec::new(),
-            triangles: tree,
+            tris_bvh: tree,
         }
     }
 }

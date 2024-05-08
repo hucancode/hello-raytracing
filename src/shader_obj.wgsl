@@ -23,15 +23,15 @@ var<storage, read_write> image: array<f32>;
 @group(1) @binding(0)
 var<uniform> camera: Camera;
 @group(1) @binding(1)
-var<storage> nodes: array<Node>;
-@group(1) @binding(2)
-var<storage> indices: array<u32>;
-@group(1) @binding(3)
-var<storage> vertices: array<vec4f>;
-@group(1) @binding(4)
-var<storage> normals: array<vec4f>;
-@group(1) @binding(5)
 var<uniform> bvh_tree_size: vec2u;
+@group(1) @binding(2)
+var<storage> nodes: array<Node>;
+@group(1) @binding(3)
+var<storage> triangles: array<Triangle>;
+@group(1) @binding(4)
+var<storage> materials: array<Material>;
+@group(1) @binding(5)
+var<storage> vertices: array<vec4f>;
 
 struct Camera {
   eye: vec4f,
@@ -50,17 +50,24 @@ struct Node {
   bound_min: vec4f,
   bound_max: vec4f,
 }
+struct Triangle {
+  a: u32,
+  b: u32,
+  c: u32,
+  material: u32,
+  normal: vec4f,
+}
+struct Material {
+    albedo: vec4f,
+    id: u32,
+    params: vec3f,
+}
 struct HitRecord {
   point: vec3f,
   normal: vec3f,
   t: f32,
   material: Material,
   front_face: bool,
-}
-struct Material {
-    albedo: vec4f,
-    params: vec3f,
-    id: u32,
 }
 
 const DEFAULT_MATERIAL = Material(vec4f(0.0,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
@@ -136,10 +143,10 @@ fn intersect_node(r: Ray, node: Node) -> bool {
   return tmax <= tmin && tmin >= 0.0;
 }
 
-fn intersect_triangle(ray: Ray, triangle: u32, ret: ptr<function, HitRecord>) {
-  let a = vertices[indices[triangle*3]].xyz;
-  let b = vertices[indices[triangle*3+1]].xyz;
-  let c = vertices[indices[triangle*3+2]].xyz;
+fn intersect_triangle(ray: Ray, i: u32, ret: ptr<function, HitRecord>) {
+  let a = vertices[triangles[i].a].xyz;
+  let b = vertices[triangles[i].b].xyz;
+  let c = vertices[triangles[i].c].xyz;
   let ab = b - a;
   let ac = c - a;
   let p = cross(ray.direction, ac);
@@ -160,9 +167,9 @@ fn intersect_triangle(ray: Ray, triangle: u32, ret: ptr<function, HitRecord>) {
     return;
   }
   (*ret).point = point_on_ray(ray, t);
-  (*ret).normal = normals[triangle].xyz;
+  (*ret).normal = triangles[i].normal.xyz;
   (*ret).t = t;
-  (*ret).material = GRAY_MATERIAL;
+  (*ret).material = materials[triangles[i].material];
   (*ret).front_face = dot((*ret).normal, ray.direction) > 0;
 }
 

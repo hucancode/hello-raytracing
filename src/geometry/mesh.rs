@@ -1,16 +1,14 @@
-use crate::geometry::Vertex;
+use crate::{geometry::Vertex, scene::Material};
 use std::io::BufReader;
 
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
+    pub material: Material,
 }
 
 impl Mesh {
-    pub fn new(vertices: Vec<Vertex>, indices: Vec<u32>) -> Self {
-        Self { vertices, indices }
-    }
-    pub fn load_obj(source: &[u8]) -> Self {
+    pub fn load_obj(source: &[u8], material: Material) -> Self {
         let mut reader = BufReader::new(source);
         if let Ok((models, _materials)) = tobj::load_obj_buf(
             &mut reader,
@@ -48,9 +46,17 @@ impl Mesh {
                     indices.push(offset + i);
                 }
             }
-            Self::new(vertices, indices)
+            Self {
+                vertices,
+                indices,
+                material,
+            }
         } else {
-            Self::new(Vec::new(), Vec::new())
+            Self {
+                vertices: Vec::new(),
+                indices: Vec::new(),
+                material,
+            }
         }
     }
 }

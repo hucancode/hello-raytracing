@@ -9,8 +9,8 @@ pub const DIELECTRIC: u32 = 3;
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Material {
     albedo: Vec4,
-    params: Vec3,
     kind: u32,
+    params: Vec3,
 }
 
 impl Material {
