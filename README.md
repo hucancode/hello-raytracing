@@ -16,3 +16,6 @@ This is my attempt in learning raytracing tech with [Peter Shirley](https://rayt
 
 ![image](https://github.com/hucancode/hello-raytracing/assets/15852849/c63080b1-4457-4b7d-9846-703570ddffe0)
 
+## Suzanne
+
+![image](https://github.com/hucancode/hello-raytracing/assets/15852849/8de32a66-558c-4f4c-a77d-23eb5c523c9e)
