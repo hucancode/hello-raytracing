@@ -20,17 +20,17 @@ var<uniform> frame_count: u32;
 var<uniform> time: u32;
 @group(0) @binding(3)
 var<storage, read_write> image: array<f32>;
-@group(1) @binding(0) 
+@group(1) @binding(0)
 var<uniform> camera: Camera;
-@group(1) @binding(1) 
+@group(1) @binding(1)
 var<storage> nodes: array<Node>;
-@group(1) @binding(2) 
+@group(1) @binding(2)
 var<storage> indices: array<u32>;
-@group(1) @binding(3) 
+@group(1) @binding(3)
 var<storage> vertices: array<vec4f>;
-@group(1) @binding(4) 
+@group(1) @binding(4)
 var<storage> normals: array<vec4f>;
-@group(1) @binding(5) 
+@group(1) @binding(5)
 var<uniform> bvh_tree_size: vec2u;
 
 struct Camera {
@@ -41,7 +41,6 @@ struct Camera {
   focal_length: f32,
   focal_blur_amount: f32,
   fov: f32,
-  // _padding: vec3f,
 }
 struct Ray {
   origin: vec3f,
@@ -60,9 +59,8 @@ struct HitRecord {
 }
 struct Material {
     albedo: vec4f,
-    id: u32,
     params: vec3f,
-    // _padding: f32,
+    id: u32,
 }
 
 const DEFAULT_MATERIAL = Material(vec4f(0.0,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
@@ -112,17 +110,17 @@ fn random_on_disk(state: ptr<function, u32>, radius: f32) -> vec3f {
 }
 
 fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
-    let k = tan(camera.fov*0.5);
-    let x = camera.right*uv.x*k;
-    let y = camera.up*uv.y*k;
-    let z = camera.direction;
-    var direction = normalize(x+y+z);
-    var origin = camera.eye;
-    // focus blur
-    let focus_point = origin + direction*camera.focal_length;
-    origin += vec4f(random_on_disk(state, camera.focal_blur_amount), 1.0);
-    direction = normalize(focus_point - origin);
-    return Ray(origin.xyz, direction.xyz);
+  let k = tan(camera.fov*0.5);
+  let x = camera.right*uv.x*k;
+  let y = camera.up*uv.y*k;
+  let z = camera.direction;
+  var direction = normalize(x+y+z);
+  var origin = camera.eye;
+  // focus blur
+  let focus_point = origin + direction*camera.focal_length;
+  origin += vec4f(random_on_disk(state, camera.focal_blur_amount), 1.0);
+  direction = normalize(focus_point - origin);
+  return Ray(origin.xyz, direction.xyz);
 }
 
 fn intersect_node(r: Ray, node: Node) -> bool {

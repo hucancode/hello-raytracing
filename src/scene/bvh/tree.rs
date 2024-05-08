@@ -14,13 +14,12 @@ pub struct Tree {
 
 impl From<Mesh> for Tree {
     fn from(mesh: Mesh) -> Self {
-        let n = mesh.indices.len() / 3;
-        let mut triangles: Vec<([f32; 3], [u32; 3])> = (0..n)
-            .map(|i| {
-                let a = mesh.indices[i * 3];
-                let b = mesh.indices[i * 3 + 1];
-                let c = mesh.indices[i * 3 + 2];
-                let triangle = [a, b, c];
+        let mut triangles: Vec<([f32; 3], [u32; 3])> = mesh
+            .indices
+            .chunks(3)
+            .map(|t| (t[0], t[1], t[2]))
+            .map(|(a, b, c)| {
+                let t = [a, b, c];
                 let a = mesh.vertices[a as usize].position;
                 let b = mesh.vertices[b as usize].position;
                 let c = mesh.vertices[c as usize].position;
@@ -29,7 +28,7 @@ impl From<Mesh> for Tree {
                     (a[1] + b[1] + c[1]) / 3.0,
                     (a[2] + b[2] + c[2]) / 3.0,
                 ];
-                (center, triangle)
+                (center, t)
             })
             .collect();
         let mut q = VecDeque::new();
