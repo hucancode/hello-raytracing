@@ -1,15 +1,15 @@
-use crate::{renderer::Renderer, scene::Scene};
+use crate::{renderer::Renderer, renderer_tris::RendererTris, scene::Scene};
 use std::{sync::Arc, time::Instant};
 use winit::window::Window;
 pub struct App {
-    renderer: Renderer,
+    renderer: RendererTris,
     scene: Scene,
 }
 
 impl App {
     pub async fn new(window: Arc<Window>) -> Self {
-        let renderer = Renderer::new(window).await;
-        let scene = Scene::new_simple();
+        let renderer = RendererTris::new(window).await;
+        let scene = Scene::new_suzane();
         Self { renderer, scene }
     }
     pub fn init(&mut self) {

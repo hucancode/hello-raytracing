@@ -1,5 +1,7 @@
 mod app;
+mod geometry;
 mod renderer;
+mod renderer_tris;
 mod scene;
 use crate::app::App;
 use std::{sync::Arc, time::Instant};

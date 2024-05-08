@@ -1,8 +1,11 @@
+mod bvh;
 mod camera;
 mod material;
 mod sphere;
 use std::f32::consts::PI;
 
+pub use bvh::Node;
+pub use bvh::Tree;
 pub use camera::Camera;
 use glam::Vec3;
 pub use material::Material;
@@ -11,9 +14,12 @@ pub use material::METAL;
 use rand::prelude::*;
 pub use sphere::Sphere;
 
+use crate::geometry::Mesh;
+
 pub struct Scene {
     pub camera: Camera,
     pub objects: Vec<Sphere>,
+    pub triangles: Tree,
 }
 
 impl Scene {
@@ -58,7 +64,11 @@ impl Scene {
                 }
             }
         }
-        Self { camera, objects }
+        Self {
+            camera,
+            objects,
+            triangles: Default::default(),
+        }
     }
     pub fn new_simple() -> Self {
         let yellow = Vec3::new(0.98, 0.89, 0.69);
@@ -82,6 +92,59 @@ impl Scene {
             Sphere::new_metal(Vec3::new(-0.3, -0.4, -0.4), 0.1, blue, 0.9),
             Sphere::new_dielectric(Vec3::new(0.2, -0.38, -0.16), 0.12, 0.1),
         ];
-        Self { camera, objects }
+        Self {
+            camera,
+            objects,
+            triangles: Default::default(),
+        }
+    }
+
+    pub fn new_suzane() -> Self {
+        let mesh = Mesh::load_obj(include_bytes!("../assets/suzanne.obj"));
+        let tree: Tree = mesh.into();
+        let camera = Camera::new(
+            Vec3::new(0.0, 2.2, 4.5),
+            Vec3::new(0.0, 0.0, -4.5),
+            5.6,
+            0.25,
+            PI * 0.3,
+        );
+        Self {
+            camera,
+            objects: Vec::new(),
+            triangles: tree,
+        }
+    }
+    pub fn new_cube() -> Self {
+        let mesh = Mesh::load_obj(include_bytes!("../assets/cube2.obj"));
+        let tree: Tree = mesh.into();
+        let camera = Camera::new(
+            Vec3::new(0.0, 2.2, 6.5),
+            Vec3::new(0.0, 0.1, -3.0),
+            2.2,
+            0.0,
+            PI * 0.3,
+        );
+        Self {
+            camera,
+            objects: Vec::new(),
+            triangles: tree,
+        }
+    }
+    pub fn new_quad() -> Self {
+        let mesh = Mesh::load_obj(include_bytes!("../assets/quad.obj"));
+        let tree: Tree = mesh.into();
+        let camera = Camera::new(
+            Vec3::new(0.0, 0.2, 3.5),
+            Vec3::new(0.0, 0.1, -3.0),
+            2.2,
+            0.0,
+            PI * 0.3,
+        );
+        Self {
+            camera,
+            objects: Vec::new(),
+            triangles: tree,
+        }
     }
 }

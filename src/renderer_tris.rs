@@ -18,7 +18,7 @@ use wgpu::{
 };
 use winit::window::Window;
 
-use crate::scene::{Camera, Scene, Sphere};
+use crate::scene::{Camera, Node, Scene};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -50,9 +50,10 @@ const VERTICES: &[Vertex] = &[
 ];
 const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 const MAX_IMAGE_BUFFER_SIZE: u32 = 4096 * 4096;
-const MAX_OBJECT_IN_SCENE: u64 = 100;
+const MAX_TRIS: u64 = 1000000;
+const MAX_VERTS: u64 = 3000000;
 
-pub struct Renderer {
+pub struct RendererTris {
     device: Device,
     surface: Surface<'static>,
     queue: Queue,
@@ -63,13 +64,17 @@ pub struct Renderer {
     resolution_buffer: Buffer,
     frame_count_buffer: Buffer,
     time_buffer: Buffer,
-    scene_object_buffer: Buffer,
     camera_buffer: Buffer,
+    nodes_buffer: Buffer,
+    indices_buffer: Buffer,
+    vertices_buffer: Buffer,
+    normals_buffer: Buffer,
+    bvh_tree_size_buffer: Buffer,
     bind_group_global_input: BindGroup,
     bind_group_scene: BindGroup,
     frame_count: u32,
 }
-impl Renderer {
+impl RendererTris {
     pub async fn new(window: Arc<Window>) -> Self {
         let mut size = window.inner_size();
         size.width = size.width.max(1);
@@ -100,7 +105,7 @@ impl Renderer {
             .expect("Failed to create device");
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
-            source: ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
+            source: ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader_obj.wgsl"))),
         });
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -162,7 +167,17 @@ impl Renderer {
             label: None,
             entries: &[
                 BindGroupLayoutEntry {
-                    binding: 0, // scene objects
+                    binding: 0, // camera
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1, // nodes
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Storage { read_only: true },
@@ -172,7 +187,37 @@ impl Renderer {
                     count: None,
                 },
                 BindGroupLayoutEntry {
-                    binding: 1, // camera
+                    binding: 2, // indices
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 3, // vertices
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 4, // normals
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 5, // bvh sizes
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
@@ -254,15 +299,39 @@ impl Renderer {
             ],
             label: None,
         });
-        let scene_object_buffer = device.create_buffer(&BufferDescriptor {
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            size: MAX_OBJECT_IN_SCENE * size_of::<Sphere>() as BufferAddress,
-            mapped_at_creation: false,
-            label: None,
-        });
         let camera_buffer = device.create_buffer(&BufferDescriptor {
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             size: size_of::<Camera>() as BufferAddress,
+            mapped_at_creation: false,
+            label: None,
+        });
+        let nodes_buffer = device.create_buffer(&BufferDescriptor {
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            size: MAX_TRIS * size_of::<Node>() as BufferAddress,
+            mapped_at_creation: false,
+            label: None,
+        });
+        let indices_buffer = device.create_buffer(&BufferDescriptor {
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            size: 3 * MAX_TRIS * size_of::<u32>() as BufferAddress,
+            mapped_at_creation: false,
+            label: None,
+        });
+        let vertices_buffer = device.create_buffer(&BufferDescriptor {
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            size: 4 * MAX_VERTS * size_of::<u32>() as BufferAddress,
+            mapped_at_creation: false,
+            label: None,
+        });
+        let normals_buffer = device.create_buffer(&BufferDescriptor {
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            size: 4 * MAX_TRIS * size_of::<u32>() as BufferAddress,
+            mapped_at_creation: false,
+            label: None,
+        });
+        let bvh_tree_size_buffer = device.create_buffer(&BufferDescriptor {
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            size: 2 * size_of::<u32>() as BufferAddress,
             mapped_at_creation: false,
             label: None,
         });
@@ -271,11 +340,27 @@ impl Renderer {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: scene_object_buffer.as_entire_binding(),
+                    resource: camera_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: camera_buffer.as_entire_binding(),
+                    resource: nodes_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: indices_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: vertices_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 4,
+                    resource: normals_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 5,
+                    resource: bvh_tree_size_buffer.as_entire_binding(),
                 },
             ],
             label: None,
@@ -292,8 +377,12 @@ impl Renderer {
             resolution_buffer,
             frame_count_buffer,
             time_buffer,
-            scene_object_buffer,
             camera_buffer,
+            nodes_buffer,
+            indices_buffer,
+            vertices_buffer,
+            normals_buffer,
+            bvh_tree_size_buffer,
             bind_group_global_input,
             bind_group_scene,
             frame_count: 0,
@@ -315,13 +404,24 @@ impl Renderer {
     pub fn set_scene(&mut self, scene: &Scene) {
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytes_of(&scene.camera));
-        let data = bytemuck::cast_slice(&scene.objects.as_slice());
-        let n = min(
-            data.len(),
-            MAX_OBJECT_IN_SCENE as usize * size_of::<Sphere>(),
-        );
+        let data = bytemuck::cast_slice(&scene.triangles.nodes.as_slice());
+        let n = min(data.len(), MAX_TRIS as usize * size_of::<Node>());
+        self.queue.write_buffer(&self.nodes_buffer, 0, &data[0..n]);
+        let data = bytemuck::cast_slice(&scene.triangles.indices.as_slice());
+        let n = min(data.len(), 3 * MAX_TRIS as usize * size_of::<u32>());
         self.queue
-            .write_buffer(&self.scene_object_buffer, 0, &data[0..n]);
+            .write_buffer(&self.indices_buffer, 0, &data[0..n]);
+        let data = bytemuck::cast_slice(&scene.triangles.vertices.as_slice());
+        let n = min(data.len(), 4 * MAX_VERTS as usize * size_of::<u32>());
+        self.queue
+            .write_buffer(&self.vertices_buffer, 0, &data[0..n]);
+        let data = bytemuck::cast_slice(&scene.triangles.normals.as_slice());
+        let n = min(data.len(), 4 * MAX_TRIS as usize * size_of::<u32>());
+        self.queue
+            .write_buffer(&self.normals_buffer, 0, &data[0..n]);
+        let data = bytemuck::cast_slice(&scene.triangles.sizes);
+        self.queue
+            .write_buffer(&self.bvh_tree_size_buffer, 0, &data);
     }
 
     pub fn set_time(&mut self, time: u32) {
