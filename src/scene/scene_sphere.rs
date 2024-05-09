@@ -1,8 +1,8 @@
 use std::cmp::min;
 use std::f32::consts::PI;
 use std::mem::size_of;
-use std::sync::Arc;
 
+use crate::renderer::RenderOutput;
 use crate::renderer::Renderer;
 pub use crate::scene::camera::Camera;
 pub use crate::scene::material::DIELECTRIC;
@@ -11,7 +11,6 @@ pub use crate::scene::sphere::Sphere;
 use glam::Vec3;
 use rand::prelude::*;
 use wgpu::BufferBindingType;
-use winit::window::Window;
 
 const MAX_OBJECT_IN_SCENE: u64 = 100;
 
@@ -30,7 +29,7 @@ impl SceneSphere {
         );
         self.renderer.write_buffer(&data[0..n], 0)
     }
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new(output: RenderOutput) -> Self {
         let black = Vec3::new(0.06, 0.06, 0.1);
         let mut rng = rand::thread_rng();
         let mut objects = Vec::new();
@@ -72,7 +71,7 @@ impl SceneSphere {
             }
         }
         let renderer = Renderer::new(
-            window,
+            output,
             vec![
                 (
                     BufferBindingType::Storage { read_only: true },
@@ -88,7 +87,7 @@ impl SceneSphere {
             objects,
         }
     }
-    pub async fn new_simple(window: Arc<Window>) -> Self {
+    pub async fn new_simple(output: RenderOutput) -> Self {
         let yellow = Vec3::new(0.98, 0.89, 0.69);
         let red = Vec3::new(0.953, 0.545, 0.659);
         let base = Vec3::new(0.12, 0.12, 0.18);
@@ -111,7 +110,7 @@ impl SceneSphere {
             Sphere::new_dielectric(Vec3::new(0.2, -0.38, -0.16), 0.12, 0.1),
         ];
         let renderer = Renderer::new(
-            window,
+            output,
             vec![
                 (
                     BufferBindingType::Storage { read_only: true },
