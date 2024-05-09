@@ -8,8 +8,8 @@ use wgpu::{
     IndexFormat, Instance, Limits, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor,
     PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureFormat, TextureViewDescriptor,
-    VertexBufferLayout, VertexState, VertexStepMode,
+    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureDescriptor, TextureFormat,
+    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
@@ -58,10 +58,10 @@ pub enum RenderOutput {
 
 pub struct Renderer {
     pub device: Device,
+    pub queue: Queue,
     surface: Option<Surface<'static>>,
-    queue: Queue,
     render_pipeline: RenderPipeline,
-    pub config: Option<SurfaceConfiguration>,
+    config: SurfaceConfiguration,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     buffers: Vec<Buffers>,
@@ -74,7 +74,7 @@ impl Renderer {
         shader_source: &str,
     ) -> Self {
         let instance = Instance::default();
-        let (adapter, width, height, config, surface) = match output {
+        let (adapter, config, surface) = match output {
             RenderOutput::Window(window) => {
                 let mut size = window.inner_size();
                 size.width = size.width.max(1);
@@ -90,20 +90,24 @@ impl Renderer {
                 let config = surface
                     .get_default_config(&adapter, size.width, size.height)
                     .unwrap();
-                (
-                    adapter,
-                    size.width,
-                    size.height,
-                    Some(config),
-                    Some(surface),
-                )
+                (adapter, config, Some(surface))
             }
             RenderOutput::Headless(width, height) => {
                 let adapter = instance
                     .request_adapter(&RequestAdapterOptions::default())
                     .await
                     .expect("Failed to find an appropriate adapter");
-                (adapter, width, height, None, None)
+                let config = SurfaceConfiguration {
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    format: TextureFormat::Rgba8UnormSrgb,
+                    width: width,
+                    height: height,
+                    desired_maximum_frame_latency: 1,
+                    alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                    view_formats: vec![TextureFormat::Rgba8UnormSrgb],
+                    present_mode: wgpu::PresentMode::Mailbox,
+                };
+                (adapter, config, None)
             }
         };
         let mut limits = Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
@@ -121,6 +125,9 @@ impl Renderer {
             )
             .await
             .expect("Failed to create device");
+        if let Some(surface) = surface.as_ref() {
+            surface.configure(&device, &config);
+        }
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
             source: ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
@@ -175,10 +182,6 @@ impl Renderer {
             bind_group_layouts: &bind_group_layouts,
             ..Default::default()
         });
-        let pixel_format = match config {
-            Some(ref config) => config.format,
-            None => TextureFormat::Bgra8UnormSrgb,
-        };
         let render_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: None,
             layout: Some(&pipeline_layout),
@@ -190,7 +193,7 @@ impl Renderer {
             fragment: Some(FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
-                targets: &[Some(pixel_format.into())],
+                targets: &[Some(config.format.into())],
             }),
             primitive: PrimitiveState::default(),
             depth_stencil: None,
@@ -206,7 +209,9 @@ impl Renderer {
                     .map(|&(ty, size)| {
                         let usage = match ty {
                             BufferBindingType::Storage { read_only: _ } => {
-                                BufferUsages::STORAGE | BufferUsages::COPY_DST
+                                BufferUsages::STORAGE
+                                    | BufferUsages::COPY_DST
+                                    | BufferUsages::COPY_SRC
                             }
                             BufferBindingType::Uniform => {
                                 BufferUsages::UNIFORM | BufferUsages::COPY_DST
@@ -238,7 +243,7 @@ impl Renderer {
             .collect();
         println!("created pipeline");
         let buffer = &buffers[0].buffers[0];
-        queue.write_buffer(buffer, 0, bytemuck::bytes_of(&[width, height]));
+        queue.write_buffer(buffer, 0, bytemuck::bytes_of(&[config.width, config.height]));
         Self {
             device,
             config,
@@ -257,13 +262,10 @@ impl Renderer {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        match (self.surface.as_ref(), self.config.as_mut()) {
-            (Some(surface), Some(config)) => {
-                config.width = max(1, width);
-                config.height = max(1, height);
-                surface.configure(&self.device, &config);
-            }
-            _ => {}
+        if let Some(surface) = self.surface.as_ref() {
+            self.config.width = max(1, width);
+            self.config.height = max(1, height);
+            surface.configure(&self.device, &self.config);
         }
         let buffer = &self.buffers[0].buffers[0];
         self.queue
@@ -293,16 +295,33 @@ impl Renderer {
 
     pub fn draw(&mut self) {
         self.set_frame_count(self.frame_count);
-        let frame = self
-            .surface
-            .as_ref()
-            .expect("No drawable surface")
-            .get_current_texture()
-            .expect("Failed to acquire next swap chain texture");
-        let view = frame.texture.create_view(&TextureViewDescriptor::default());
+        let frame = match self.surface.as_ref() {
+            Some(surface) => surface.get_current_texture(),
+            None => Err(wgpu::SurfaceError::Lost),
+        };
+        let view = match frame.as_ref() {
+            Ok(frame) => frame.texture.create_view(&TextureViewDescriptor::default()),
+            Err(_) => self
+                .device
+                .create_texture(&TextureDescriptor {
+                    label: None,
+                    size: wgpu::Extent3d {
+                        width: self.config.width,
+                        height: self.config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    view_formats: &self.config.view_formats,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: self.config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                })
+                .create_view(&TextureViewDescriptor::default()),
+        };
         let mut encoder = self
             .device
-            .create_command_encoder(&CommandEncoderDescriptor { label: None });
+            .create_command_encoder(&CommandEncoderDescriptor::default());
         let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
             color_attachments: &[Some(RenderPassColorAttachment {
                 view: &view,
@@ -323,7 +342,9 @@ impl Renderer {
         rpass.draw_indexed(0..6, 0, 0..1);
         drop(rpass);
         self.queue.submit(Some(encoder.finish()));
-        frame.present();
+        if let Ok(frame) = frame {
+            frame.present();
+        }
         self.frame_count += 1;
     }
 }
