@@ -13,7 +13,7 @@ impl Mesh {
         if let Ok((models, _materials)) = tobj::load_obj_buf(
             &mut reader,
             &tobj::LoadOptions {
-                single_index: true,
+                // single_index: true,
                 ..Default::default()
             },
             |_matpath| Err(tobj::LoadError::GenericFailure),
@@ -58,5 +58,32 @@ impl Mesh {
                 material,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::Vec3;
+
+    use super::*;
+
+    #[test]
+    fn simple_cube() {
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/cube.obj"),
+            Material::new_lambertian(Vec3::new(0.5, 0.5, 0.5)),
+        );
+        assert_eq!(mesh.vertices.len(), 8);
+        assert_eq!(mesh.indices.len(), 36);
+    }
+
+    #[test]
+    fn suzanne() {
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/suzanne.obj"),
+            Material::new_lambertian(Vec3::new(0.5, 0.5, 0.5)),
+        );
+        assert_eq!(mesh.vertices.len(), 515);
+        assert_eq!(mesh.indices.len(), 2937);
     }
 }
