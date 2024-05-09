@@ -100,16 +100,25 @@ mod tests {
             include_bytes!("../../assets/cube.obj"),
             Material::new_lambertian(Vec3::new(0.5, 0.5, 0.5)),
         );
-        let tree: Tree = mesh.into();
-        println!("tree = {tree:?}");
+        let mut tree: Tree = mesh.into();
+        tree.build();
+        assert_eq!(tree.sizes, [16, 12]);
+        assert_eq!(tree.nodes.len(), 16);
+        assert_eq!(tree.triangles.len(), 12);
+        assert_eq!(tree.materials.len(), 1);
     }
+
     #[test]
     fn suzanne() {
         let mesh = Mesh::load_obj(
             include_bytes!("../../assets/suzanne.obj"),
             Material::new_lambertian(Vec3::new(0.5, 0.5, 0.5)),
         );
-        let tree: Tree = mesh.into();
-        println!("tree = {tree:?}");
+        let mut tree: Tree = mesh.into();
+        tree.build();
+        assert_eq!(tree.sizes, [1024, 979]);
+        assert_eq!(tree.nodes.len(), 1024);
+        assert_eq!(tree.triangles.len(), 979);
+        assert_eq!(tree.materials.len(), 1);
     }
 }
