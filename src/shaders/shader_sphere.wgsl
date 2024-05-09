@@ -43,9 +43,9 @@ struct Light {
   strength: f32,
 }
 struct Sphere {
-  center_and_radius: vec4f,
+  center: vec3f,
+  radius: f32,
   material: Material,
-  // _padding: vec4f,
 }
 struct HitRecord {
   point: vec3f,
@@ -56,8 +56,8 @@ struct HitRecord {
 }
 struct Material {
     albedo: vec4f,
-    id: u32,
     params: vec3f,
+    id: u32,
 }
 
 @vertex
@@ -115,8 +115,8 @@ fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
     return Ray(origin.xyz, direction.xyz);
 }
 fn intersect_sphere(ray: Ray, sphere: Sphere) -> HitRecord {
-  let center = sphere.center_and_radius.xyz;
-  let radius = sphere.center_and_radius.w;
+  let center = sphere.center;
+  let radius = sphere.radius;
   let oc = ray.origin - center;
   let a = dot(ray.direction, ray.direction);
   let b = 2 * dot(oc, ray.direction);

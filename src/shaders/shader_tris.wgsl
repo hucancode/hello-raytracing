@@ -57,8 +57,8 @@ struct Triangle {
 }
 struct Material {
     albedo: vec4f,
-    id: u32,
     params: vec3f,
+    id: u32,
 }
 struct HitRecord {
   point: vec3f,
@@ -68,9 +68,9 @@ struct HitRecord {
   front_face: bool,
 }
 
-const DEFAULT_MATERIAL = Material(vec4f(0.0,0.4,0.0,1.0), MAT_LAMBERTIAN, vec3f());
+const DEFAULT_MATERIAL = Material(vec4f(0.0,0.4,0.0,1.0), vec3f(), MAT_LAMBERTIAN);
 const EMPTY_HIT_RECORD = HitRecord(vec3f(), vec3f(), FLT_MAX, DEFAULT_MATERIAL, false);
-const GRAY_MATERIAL = Material(vec4f(0.5,0.5,0.6,1.0), MAT_LAMBERTIAN, vec3f());
+const GRAY_MATERIAL = Material(vec4f(0.5,0.5,0.6,1.0), vec3f(), MAT_LAMBERTIAN);
 
 @vertex
 fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
