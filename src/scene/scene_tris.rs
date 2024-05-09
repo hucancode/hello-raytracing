@@ -10,7 +10,6 @@ use super::{bvh::Node, bvh::Tree, bvh::Triangle, material::Material, Camera};
 
 const MAX_TRIS: usize = 1000000;
 const MAX_MATS: usize = 1000;
-const MAX_VERTS: usize = 3000000;
 
 pub struct SceneTris {
     pub renderer: Renderer,
@@ -37,10 +36,6 @@ impl SceneTris {
                 bytemuck::cast_slice(&self.tris_bvh.materials),
                 MAX_MATS * size_of::<Material>(),
             ),
-            (
-                bytemuck::cast_slice(&self.tris_bvh.vertices),
-                4 * MAX_VERTS * size_of::<f32>(),
-            ),
         ];
         for (i, (data, size)) in data.into_iter().enumerate() {
             let n = min(data.len(), size);
@@ -64,10 +59,6 @@ impl SceneTris {
                     BufferBindingType::Storage { read_only: true },
                     (MAX_MATS * size_of::<Material>()) as u64,
                 ), // materials
-                (
-                    BufferBindingType::Storage { read_only: true },
-                    (4 * MAX_VERTS * size_of::<f32>()) as u64,
-                ), // vertices
             ],
             include_str!("../shaders/shader_tris.wgsl"),
         )
@@ -76,7 +67,7 @@ impl SceneTris {
     pub async fn new_suzane(window: Arc<Window>) -> Self {
         let mesh = Mesh::load_obj(
             include_bytes!("../assets/suzanne.obj"),
-            Material::new_lambertian(Vec3::new(0.5, 0.5, 0.6)),
+            Material::new_lambertian(Vec3::new(0.3, 0.4, 0.6)),
         );
         let mut tree: Tree = mesh.into();
         let mesh = Mesh::load_obj(
@@ -86,7 +77,7 @@ impl SceneTris {
         tree.add_mesh(mesh);
         let mesh = Mesh::load_obj(
             include_bytes!("../assets/cube_m.obj"),
-            Material::new_dielectric(0.8),
+            Material::new_dielectric(0.1),
         );
         tree.add_mesh(mesh);
         let mesh = Mesh::load_obj(

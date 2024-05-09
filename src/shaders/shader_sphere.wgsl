@@ -196,31 +196,28 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
     }
   }
 }
+fn intersect_all_sphere(ray: Ray) -> HitRecord {
+  var closest_hit: HitRecord;
+  closest_hit.t = FLT_MAX;
+  for (var i = 0u; i < arrayLength(&scene); i++) {
+    let obj = scene[i];
+    let hit = intersect_sphere(ray, obj);
+    if hit.t > 0 && hit.t < closest_hit.t {
+      closest_hit = hit;
+    }
+  }
+  return closest_hit;
+}
 fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
-  var ret = vec4f(0);
   var attenuation = vec3f(1);
   var current_ray = ray;
-  var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
-    var closest_hit: HitRecord;
-    closest_hit.t = FLT_MAX;
-    for (var i = 0u; i < arrayLength(&scene); i++) {
-      let obj = scene[i];
-      let hit = intersect_sphere(current_ray, obj);
-      if hit.t > 0 && hit.t < closest_hit.t {
-        closest_hit = hit;
-      }
-    }
-    if abs(closest_hit.t - FLT_MAX) < EPSILON {
+    let hit = intersect_all_sphere(current_ray);
+    if abs(hit.t - FLT_MAX) < EPSILON {
       break;
     }
-    current_ray = scatter(state, current_ray, closest_hit);
-    if first_hit {
-      attenuation = closest_hit.material.albedo.rgb;
-      first_hit = false;
-    } else {
-      attenuation *= closest_hit.material.albedo.rgb;
-    }
+    current_ray = scatter(state, current_ray, hit);
+    attenuation *= hit.material.albedo.rgb * 0.7;
   }
   let sky = mix(SKY, BLUE, ray.direction.y*0.5 + 0.5);
   return attenuation * sky;

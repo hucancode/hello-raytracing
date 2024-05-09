@@ -18,10 +18,7 @@ impl Default for Node {
 }
 
 impl Node {
-    pub fn union(&mut self, xyzw: [f32; 4]) {
-        self.refit(Vec4::from_array(xyzw))
-    }
-    pub fn refit(&mut self, vertex: Vec4) {
+    pub fn union(&mut self, vertex: Vec4) {
         self.bound_min = self.bound_min.min(vertex);
         self.bound_max = self.bound_max.max(vertex);
     }

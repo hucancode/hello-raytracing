@@ -30,8 +30,6 @@ var<storage> nodes: array<Node>;
 var<storage> triangles: array<Triangle>;
 @group(1) @binding(3)
 var<storage> materials: array<Material>;
-@group(1) @binding(4)
-var<storage> vertices: array<vec4f>;
 
 struct Camera {
   eye: vec4f,
@@ -47,15 +45,15 @@ struct Ray {
   direction: vec3f,
 }
 struct Node {
-  bound_min: vec4f,
-  bound_max: vec4f,
+  bound_min: vec3f,
+  bound_max: vec3f,
 }
 struct Triangle {
-  a: u32,
-  b: u32,
-  c: u32,
+  a: vec4f,
+  b: vec4f,
+  c: vec4f,
+  normal: vec3f,
   material: u32,
-  normal: vec4f,
 }
 struct Material {
     albedo: vec4f,
@@ -144,9 +142,11 @@ fn intersect_node(r: Ray, node: Node) -> bool {
 }
 
 fn intersect_triangle(ray: Ray, i: u32, ret: ptr<function, HitRecord>) {
-  let a = vertices[triangles[i].a].xyz;
-  let b = vertices[triangles[i].b].xyz;
-  let c = vertices[triangles[i].c].xyz;
+  let a = triangles[i].a.xyz;
+  let b = triangles[i].b.xyz;
+  let c = triangles[i].c.xyz;
+  let normal = triangles[i].normal;
+  let material = triangles[i].material;
   let ab = b - a;
   let ac = c - a;
   let p = cross(ray.direction, ac);
@@ -167,9 +167,9 @@ fn intersect_triangle(ray: Ray, i: u32, ret: ptr<function, HitRecord>) {
     return;
   }
   (*ret).point = point_on_ray(ray, t);
-  (*ret).normal = triangles[i].normal.xyz;
+  (*ret).normal = normal;
   (*ret).t = t;
-  (*ret).material = materials[triangles[i].material];
+  (*ret).material = materials[material];
   (*ret).front_face = dot((*ret).normal, ray.direction) > 0;
 }
 
@@ -237,14 +237,13 @@ fn scatter(state: ptr<function, u32>, ray: Ray, hit: HitRecord) -> Ray {
     }
   }
 }
-
 fn intersect_all_node(ray: Ray) -> HitRecord {
     var i = 1u;
     let n = bvh_tree_size.x;
     let m = bvh_tree_size.y;
     var ret = EMPTY_HIT_RECORD;
     var step = 0;
-    while step < 5000 {
+    while step < 500 {
       step++;
       if i < n && intersect_node(ray, nodes[i]) {
         i *= 2u; // go to first children
@@ -269,19 +268,18 @@ fn intersect_all_node(ray: Ray) -> HitRecord {
 }
 
 fn trace(ray: Ray, state: ptr<function, u32>) -> vec3f {
-  let sky = mix(SKY, BLUE, ray.direction.y*0.5 + 0.5);
-  var attenuation = sky;
+  var attenuation = vec3f(1);
   var current_ray = ray;
-  var first_hit = true;
   for(var b = 0;b < BOUNCE_MAX; b++) {
     var hit = intersect_all_node(current_ray);
     if abs(hit.t - FLT_MAX) < EPSILON {
-      return attenuation;
+      break;
     }
     current_ray = scatter(state, current_ray, hit);
-    attenuation *= hit.material.albedo.rgb;
+    attenuation *= hit.material.albedo.rgb * 0.7;
   }
-  return vec3f();
+  let sky = mix(SKY, BLUE, ray.direction.y*0.5 + 0.5);
+  return attenuation * sky;
 }
 
 

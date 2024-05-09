@@ -1,27 +1,18 @@
-use bytemuck::{Pod, Zeroable};
+use glam::{Vec4, Vec4Swizzles};
 
 use crate::geometry::Mesh;
 use crate::scene::bvh::Node;
+use crate::scene::bvh::Triangle;
 use crate::scene::material::Material;
 use std::cmp::{min, Ordering};
 use std::collections::VecDeque;
 
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone, Pod, Zeroable)]
-pub struct Triangle {
-    pub a: u32,
-    pub b: u32,
-    pub c: u32,
-    pub material: u32,
-    pub normal: [f32; 4],
-}
 #[derive(Debug, Default)]
 pub struct Tree {
     pub sizes: [u32; 2],
     pub nodes: Vec<Node>,
     pub triangles: Vec<Triangle>,
     pub materials: Vec<Material>,
-    pub vertices: Vec<[f32; 4]>,
 }
 
 impl From<Mesh> for Tree {
@@ -35,7 +26,6 @@ impl From<Mesh> for Tree {
 impl Tree {
     pub fn new() -> Self {
         Self {
-            vertices: Vec::new(),
             triangles: Vec::new(),
             nodes: Vec::new(),
             materials: Vec::new(),
@@ -44,22 +34,7 @@ impl Tree {
     }
     pub fn build(&mut self) {
         let mut q = VecDeque::new();
-        let mut triangles: Vec<_> = self
-            .triangles
-            .iter()
-            .map(|t| {
-                let a = self.vertices[t.a as usize];
-                let b = self.vertices[t.b as usize];
-                let c = self.vertices[t.c as usize];
-                let center = [
-                    (a[0] + b[0] + c[0]) / 3.0,
-                    (a[1] + b[1] + c[1]) / 3.0,
-                    (a[2] + b[2] + c[2]) / 3.0,
-                ];
-                (*t, center)
-            })
-            .collect();
-        let m = triangles.len();
+        let m = self.triangles.len();
         let n = m.next_power_of_two();
         q.push_back((0, n, 0));
         while let Some((i, j, depth)) = q.pop_front() {
@@ -69,9 +44,9 @@ impl Tree {
                 continue;
             }
             // println!("traverse {i}~{j} depth {depth}");
-            triangles[l..r].sort_by(|(_, a_center), (_, b_center)| {
-                a_center[depth % 3]
-                    .partial_cmp(&b_center[depth % 3])
+            self.triangles[l..r].sort_by(|a, b| {
+                a.custom[depth % 3]
+                    .partial_cmp(&b.custom[depth % 3])
                     .unwrap_or(Ordering::Equal)
             });
             let m = (i + j) / 2;
@@ -79,32 +54,37 @@ impl Tree {
             q.push_back((m, j, depth + 1));
         }
         self.nodes = vec![Node::default(); n];
-        for (i, (t, _)) in triangles.iter().enumerate() {
+        for (i, t) in self.triangles.iter().enumerate() {
             let mut j = (i + n) / 2;
             while j > 0 {
-                self.nodes[j].union(self.vertices[t.a as usize]);
-                self.nodes[j].union(self.vertices[t.b as usize]);
-                self.nodes[j].union(self.vertices[t.c as usize]);
+                self.nodes[j].union(t.a);
+                self.nodes[j].union(t.b);
+                self.nodes[j].union(t.c);
                 j /= 2;
             }
         }
-        self.triangles = triangles.into_iter().map(|(t, _)| t).collect();
+        for t in self.triangles.iter_mut() {
+            let normal = (t.b - t.a).xyz().cross((t.c - t.a).xyz());
+            t.custom = normal.normalize();
+        }
         self.sizes = [n as u32, m as u32];
     }
     pub fn add_mesh(&mut self, mesh: Mesh) {
-        let v_offset = self.vertices.len() as u32;
-        let m_offset = self.materials.len() as u32;
-        self.vertices
-            .extend(mesh.vertices.iter().map(|v| v.position));
-        self.triangles
-            .extend(mesh.indices.chunks(3).map(|t| Triangle {
-                a: t[0] + v_offset,
-                b: t[1] + v_offset,
-                c: t[2] + v_offset,
-                material: m_offset,
-                normal: mesh.vertices[t[0] as usize].normal,
-            }));
+        let material = self.materials.len() as u32;
         self.materials.push(mesh.material);
+        self.triangles.extend(mesh.indices.chunks_exact(3).map(|t| {
+            let a = Vec4::from_array(mesh.vertices[t[0] as usize].position);
+            let b = Vec4::from_array(mesh.vertices[t[1] as usize].position);
+            let c = Vec4::from_array(mesh.vertices[t[2] as usize].position);
+            let center3x = (a + b + c).xyz();
+            Triangle {
+                a,
+                b,
+                c,
+                material,
+                custom: center3x,
+            }
+        }));
     }
 }
 
