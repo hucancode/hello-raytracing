@@ -18,6 +18,7 @@ impl App {
             3 => Box::new(SceneTris::new_quad(RenderOutput::Window(window)).await),
             4 => Box::new(SceneTris::new_cube(RenderOutput::Window(window)).await),
             5 => Box::new(SceneTris::new_lucy(RenderOutput::Window(window)).await),
+            6 => Box::new(SceneTris::new_dragon(RenderOutput::Window(window)).await),
             _ => Box::new(SceneTris::new_suzane(RenderOutput::Window(window)).await),
         };
         Self { scene }
