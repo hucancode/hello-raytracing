@@ -153,9 +153,31 @@ mod tests {
     use std::io::Write;
 
     #[test]
+    fn suzanne() {
+        let width = 1024;
+        let height = 768;
+        let mut scene =
+            pollster::block_on(SceneTris::new_suzane(RenderOutput::Headless(width, height)));
+        scene.init();
+        let content = render_ppm(&mut scene.renderer);
+        let mut file = std::fs::File::create("suzanne.ppm").unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+    }
+    #[test]
+    fn simple_quad() {
+        let width = 1024;
+        let height = 768;
+        let mut scene =
+            pollster::block_on(SceneTris::new_quad(RenderOutput::Headless(width, height)));
+        scene.init();
+        let content = render_ppm(&mut scene.renderer);
+        let mut file = std::fs::File::create("quad.ppm").unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+    }
+    #[test]
     fn simple_cube() {
-        let width = 600;
-        let height = 400;
+        let width = 1024;
+        let height = 768;
         let mut scene =
             pollster::block_on(SceneTris::new_cube(RenderOutput::Headless(width, height)));
         scene.init();

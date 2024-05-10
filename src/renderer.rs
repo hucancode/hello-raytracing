@@ -44,11 +44,11 @@ const VERTICES: &[Vertex] = &[
     },
 ];
 const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
-const MAX_IMAGE_BUFFER_SIZE: usize = 4096 * 4096;
+const MAX_IMAGE_BUFFER_SIZE: usize = 4096 * 2048;
 
 pub struct Buffers {
-    buffers: Vec<wgpu::Buffer>,
-    group: wgpu::BindGroup,
+    pub buffers: Vec<wgpu::Buffer>,
+    pub group: wgpu::BindGroup,
 }
 
 pub enum RenderOutput {
@@ -66,11 +66,11 @@ pub struct Renderer {
     pub queue: Queue,
     pub target: RenderTarget,
     pub config: SurfaceConfiguration,
+    pub buffers: Vec<Buffers>,
+    pub frame_count: u32,
     render_pipeline: RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    buffers: Vec<Buffers>,
-    frame_count: u32,
 }
 impl Renderer {
     pub async fn new(
@@ -295,10 +295,6 @@ impl Renderer {
             buffers,
             frame_count: 0,
         }
-    }
-
-    pub fn get_image_buffer(&self) -> &wgpu::Buffer {
-        &self.buffers[0].buffers[3]
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {

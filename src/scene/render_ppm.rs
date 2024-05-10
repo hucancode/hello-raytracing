@@ -15,7 +15,7 @@ fn copy_image_buffer(renderer: &mut Renderer) -> Vec<u8> {
         mapped_at_creation: false,
         label: None,
     });
-    let input_buffer = &renderer.get_image_buffer();
+    let input_buffer = &renderer.buffers[0].buffers[3];
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("Copy Buffer Encoder"),
     });
