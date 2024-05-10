@@ -64,12 +64,43 @@ impl SceneTris {
         )
         .await
     }
+    pub async fn new_lucy(output: RenderOutput) -> Self {
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/lucy_lp_20.obj"),
+            Material::new_lambertian(Vec3::new(0.4, 0.3, 0.6)),
+        );
+        let mut tree: Tree = mesh.into();
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/floor.obj"),
+            Material::new_lambertian(Vec3::new(0.5, 0.5, 0.6)),
+        );
+        tree.add_mesh(mesh);
+        tree.build();
+        let renderer = Self::make_renderer(output).await;
+        let camera = Camera::new(
+            Vec3::new(0.0, 5.0, 6.0),
+            Vec3::new(0.0, 0.0, -8.0),
+            5.6,
+            0.0,
+            PI * 0.3,
+        );
+        Self {
+            renderer,
+            camera,
+            tris_bvh: tree,
+        }
+    }
     pub async fn new_suzane(output: RenderOutput) -> Self {
         let mesh = Mesh::load_obj(
             include_bytes!("../assets/suzanne.obj"),
             Material::new_lambertian(Vec3::new(0.3, 0.4, 0.6)),
         );
         let mut tree: Tree = mesh.into();
+        let mesh = Mesh::load_obj(
+            include_bytes!("../assets/ico_sphere.obj"),
+            Material::new_dielectric(0.2),
+        );
+        tree.add_mesh(mesh);
         let mesh = Mesh::load_obj(
             include_bytes!("../assets/cube_s.obj"),
             Material::new_metal(Vec3::new(0.5, 0.5, 0.6), 0.2),

@@ -97,15 +97,15 @@ impl SceneSphere {
             Vec3::new(0.0, 0.2, 1.5),
             Vec3::new(0.0, 0.1, -3.0),
             2.2,
-            0.1,
+            0.05,
             PI * 0.3,
         );
         let objects = vec![
             Sphere::new_lambertian(Vec3::new(0.0, -100.5, -1.0), 100.0, base),
-            Sphere::new_dielectric(Vec3::new(-1.0, 0.0, -1.0), 0.5, 1.5),
+            Sphere::new_dielectric(Vec3::new(-1.0, 0.0, -0.6), 0.5, 1.5),
             Sphere::new_lambertian(Vec3::new(0.0, 0.0, -1.0), 0.5, black),
             Sphere::new_metal(Vec3::new(1.0, 0., -1.0), 0.5, yellow, 0.1),
-            Sphere::new_lambertian(Vec3::new(-0.7, -0.3, -0.2), 0.2, red),
+            Sphere::new_lambertian(Vec3::new(-0.7, -0.3, -0.1), 0.2, red),
             Sphere::new_metal(Vec3::new(-0.3, -0.4, -0.4), 0.1, blue, 0.9),
             Sphere::new_dielectric(Vec3::new(0.2, -0.38, -0.16), 0.12, 0.1),
         ];

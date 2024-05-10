@@ -1,6 +1,6 @@
 const PI = 3.141592653589793;
 const PI2 = PI*2;
-const EPSILON = 0.000001;
+const EPSILON = 0.0001;
 const FLT_MAX = 3.40282e+38;
 const MAT_LAMBERTIAN = 1u;
 const MAT_METAL = 2u;
@@ -243,7 +243,7 @@ fn intersect_all_node(ray: Ray) -> HitRecord {
     let m = bvh_tree_size.y;
     var ret = EMPTY_HIT_RECORD;
     var step = 0;
-    while step < 500 {
+    while step < 1000 {
       step++;
       if i < n && intersect_node(ray, nodes[i]) {
         i *= 2u; // go to first children
