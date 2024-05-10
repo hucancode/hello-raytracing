@@ -1,6 +1,7 @@
 pub mod bvh;
 mod camera;
 mod material;
+mod render_ppm;
 mod scene_sphere;
 mod scene_tris;
 mod sphere;

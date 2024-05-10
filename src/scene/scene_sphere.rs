@@ -127,3 +127,24 @@ impl SceneSphere {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::render_ppm::render_ppm;
+    use super::*;
+    use crate::scene::Scene;
+    use std::io::Write;
+
+    #[test]
+    fn sphere() {
+        let width = 600;
+        let height = 400;
+        let mut scene = pollster::block_on(SceneSphere::new_simple(RenderOutput::Headless(
+            width, height,
+        )));
+        scene.init();
+        let content = render_ppm(&mut scene.renderer);
+        let mut file = std::fs::File::create("sphere.ppm").unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+    }
+}

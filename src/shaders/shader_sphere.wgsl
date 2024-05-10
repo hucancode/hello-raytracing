@@ -244,7 +244,7 @@ fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
   color /= f32(SAMPLE_PER_FRAME);
   let x = u32(position.x);
   let y = u32(position.y);
-  let i = (x * resolution.y + y)*3;
+  let i = (y * resolution.x + x)*3;
   let oldColor = vec3f(image[i], image[i+1], image[i+2]);
   let newColor = mix(oldColor, color, 1.0/(min(f32(frame_count), f32(SAMPLE_FRAME))+1));
   image[i] = newColor.r;

@@ -146,53 +146,21 @@ impl SceneTris {
 
 #[cfg(test)]
 mod tests {
-    use wgpu::{BufferDescriptor, BufferUsages};
+    use crate::scene::Scene;
 
+    use super::super::render_ppm::render_ppm;
     use super::*;
     use std::io::Write;
 
     #[test]
     fn simple_cube() {
-        use std::sync::mpsc::channel;
         let width = 600;
         let height = 400;
-        let size = (width * height * size_of::<u32>() as u32) as u64;
-        let scene =
+        let mut scene =
             pollster::block_on(SceneTris::new_cube(RenderOutput::Headless(width, height)));
-        let mut renderer = scene.renderer;
-        renderer.draw();
-        let device = &renderer.device;
-        let output_buffer = device.create_buffer(&BufferDescriptor {
-            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
-            size,
-            mapped_at_creation: false,
-            label: None,
-        });
-        let input_buffer = &renderer.get_image_buffer();
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Copy Buffer Encoder"),
-        });
-        encoder.copy_buffer_to_buffer(input_buffer, 0, &output_buffer, 0, size);
-        renderer.queue.submit(Some(encoder.finish()));
-        let buffer_slice = output_buffer.slice(..);
-        let (tx, rx) = channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            tx.send(result.is_ok()).unwrap()
-        });
-        device.poll(wgpu::Maintain::Wait);
-        if rx.recv().is_ok_and(|success| success) {
-            let data = buffer_slice.get_mapped_range();
-            let data = data
-                .chunks_exact(4)
-                .map(|a| [a[0], a[1], a[2]])
-                .collect::<Vec<[u8; 3]>>();
-            let mut file = std::fs::File::create("output.ppm").unwrap();
-            writeln!(file, "P3").unwrap();
-            writeln!(file, "{width} {height} 255").unwrap();
-            for [r, g, b] in data.iter() {
-                write!(file, "{r} {g} {b} ").unwrap();
-            }
-        };
-        output_buffer.unmap();
+        scene.init();
+        let content = render_ppm(&mut scene.renderer);
+        let mut file = std::fs::File::create("cube.ppm").unwrap();
+        file.write_all(content.as_bytes()).unwrap();
     }
 }

@@ -8,8 +8,8 @@ use wgpu::{
     IndexFormat, Instance, Limits, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor,
     PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureDescriptor, TextureFormat,
-    TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
+    ShaderStages, StoreOp, Surface, SurfaceConfiguration, Texture, TextureDescriptor,
+    TextureFormat, TextureViewDescriptor, VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
@@ -56,12 +56,17 @@ pub enum RenderOutput {
     Headless(u32, u32),
 }
 
+pub enum RenderTarget {
+    Surface(Surface<'static>),
+    Texture(Texture),
+}
+
 pub struct Renderer {
     pub device: Device,
     pub queue: Queue,
-    surface: Option<Surface<'static>>,
+    pub target: RenderTarget,
+    pub config: SurfaceConfiguration,
     render_pipeline: RenderPipeline,
-    config: SurfaceConfiguration,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     buffers: Vec<Buffers>,
@@ -74,7 +79,7 @@ impl Renderer {
         shader_source: &str,
     ) -> Self {
         let instance = Instance::default();
-        let (adapter, config, surface) = match output {
+        let (device, queue, config, target) = match output {
             RenderOutput::Window(window) => {
                 let mut size = window.inner_size();
                 size.width = size.width.max(1);
@@ -90,7 +95,25 @@ impl Renderer {
                 let config = surface
                     .get_default_config(&adapter, size.width, size.height)
                     .unwrap();
-                (adapter, config, Some(surface))
+                let mut limits =
+                    Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+                let max_storage_buffer_size = 256 << 20;
+                limits.max_buffer_size =
+                    max(limits.max_buffer_size, max_storage_buffer_size as u64);
+                limits.max_storage_buffer_binding_size = max_storage_buffer_size;
+                limits.max_storage_buffers_per_shader_stage = 4;
+                let (device, queue) = adapter
+                    .request_device(
+                        &DeviceDescriptor {
+                            required_limits: limits,
+                            ..Default::default()
+                        },
+                        None,
+                    )
+                    .await
+                    .expect("Failed to create device");
+                surface.configure(&device, &config);
+                (device, queue, config, RenderTarget::Surface(surface))
             }
             RenderOutput::Headless(width, height) => {
                 let adapter = instance
@@ -100,34 +123,47 @@ impl Renderer {
                 let config = SurfaceConfiguration {
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                     format: TextureFormat::Rgba8UnormSrgb,
-                    width: width,
-                    height: height,
+                    width,
+                    height,
                     desired_maximum_frame_latency: 1,
                     alpha_mode: wgpu::CompositeAlphaMode::Auto,
                     view_formats: vec![TextureFormat::Rgba8UnormSrgb],
                     present_mode: wgpu::PresentMode::Mailbox,
                 };
-                (adapter, config, None)
+                let mut limits =
+                    Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+                let max_storage_buffer_size = 256 << 20;
+                limits.max_buffer_size =
+                    max(limits.max_buffer_size, max_storage_buffer_size as u64);
+                limits.max_storage_buffer_binding_size = max_storage_buffer_size;
+                limits.max_storage_buffers_per_shader_stage = 4;
+                let (device, queue) = adapter
+                    .request_device(
+                        &DeviceDescriptor {
+                            required_limits: limits,
+                            ..Default::default()
+                        },
+                        None,
+                    )
+                    .await
+                    .expect("Failed to create device");
+                let texture = device.create_texture(&TextureDescriptor {
+                    label: None,
+                    size: wgpu::Extent3d {
+                        width: config.width,
+                        height: config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    view_formats: &config.view_formats,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                });
+                (device, queue, config, RenderTarget::Texture(texture))
             }
         };
-        let mut limits = Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        let max_storage_buffer_size = 256 << 20;
-        limits.max_buffer_size = max(limits.max_buffer_size, max_storage_buffer_size as u64);
-        limits.max_storage_buffer_binding_size = max_storage_buffer_size;
-        limits.max_storage_buffers_per_shader_stage = 4;
-        let (device, queue) = adapter
-            .request_device(
-                &DeviceDescriptor {
-                    required_limits: limits,
-                    ..Default::default()
-                },
-                None,
-            )
-            .await
-            .expect("Failed to create device");
-        if let Some(surface) = surface.as_ref() {
-            surface.configure(&device, &config);
-        }
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
             source: ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
@@ -243,11 +279,15 @@ impl Renderer {
             .collect();
         println!("created pipeline");
         let buffer = &buffers[0].buffers[0];
-        queue.write_buffer(buffer, 0, bytemuck::bytes_of(&[config.width, config.height]));
+        queue.write_buffer(
+            buffer,
+            0,
+            bytemuck::bytes_of(&[config.width, config.height]),
+        );
         Self {
             device,
             config,
-            surface,
+            target,
             queue,
             render_pipeline,
             vertex_buffer,
@@ -262,10 +302,31 @@ impl Renderer {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        if let Some(surface) = self.surface.as_ref() {
-            self.config.width = max(1, width);
-            self.config.height = max(1, height);
-            surface.configure(&self.device, &self.config);
+        match self.target {
+            RenderTarget::Surface(ref surface) => {
+                self.config.width = max(1, width);
+                self.config.height = max(1, height);
+                surface.configure(&self.device, &self.config);
+            }
+            RenderTarget::Texture(_) => {
+                self.config.width = max(1, width);
+                self.config.height = max(1, height);
+                let texture = self.device.create_texture(&TextureDescriptor {
+                    label: None,
+                    size: wgpu::Extent3d {
+                        width: self.config.width,
+                        height: self.config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    view_formats: &self.config.view_formats,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: self.config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                });
+                self.target = RenderTarget::Texture(texture);
+            }
         }
         let buffer = &self.buffers[0].buffers[0];
         self.queue
@@ -295,29 +356,19 @@ impl Renderer {
 
     pub fn draw(&mut self) {
         self.set_frame_count(self.frame_count);
-        let frame = match self.surface.as_ref() {
-            Some(surface) => surface.get_current_texture(),
-            None => Err(wgpu::SurfaceError::Lost),
+        let frame = match &self.target {
+            RenderTarget::Surface(surface) => surface.get_current_texture(),
+            RenderTarget::Texture(_) => Err(wgpu::SurfaceError::Lost),
         };
-        let view = match frame.as_ref() {
-            Ok(frame) => frame.texture.create_view(&TextureViewDescriptor::default()),
-            Err(_) => self
-                .device
-                .create_texture(&TextureDescriptor {
-                    label: None,
-                    size: wgpu::Extent3d {
-                        width: self.config.width,
-                        height: self.config.height,
-                        depth_or_array_layers: 1,
-                    },
-                    view_formats: &self.config.view_formats,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: self.config.format,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                })
+        let view = match &self.target {
+            RenderTarget::Surface(_) => frame
+                .as_ref()
+                .unwrap()
+                .texture
                 .create_view(&TextureViewDescriptor::default()),
+            RenderTarget::Texture(texture) => {
+                texture.create_view(&TextureViewDescriptor::default())
+            }
         };
         let mut encoder = self
             .device
