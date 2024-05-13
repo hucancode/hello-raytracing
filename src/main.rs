@@ -1,13 +1,13 @@
 use std::env;
-use std::sync::Arc;
-use wgsl_toy::run;
-use winit::event_loop::EventLoop;
-use winit::window::Window;
+use winit::event_loop::{ControlFlow, EventLoop};
+use wgsl_toy::App;
+
 fn main() {
+    env_logger::init();
     let args: Vec<String> = env::args().collect();
     let event_loop = EventLoop::new().unwrap();
-    let window = Window::new(&event_loop).unwrap();
-    window.set_title("Hello WGSL");
-    env_logger::init();
-    pollster::block_on(run(event_loop, Arc::new(window), args));
+    event_loop.set_control_flow(ControlFlow::Poll);
+    let mut app = App::default();
+    app.parse_args(args);
+    event_loop.run_app(&mut app).unwrap();
 }
