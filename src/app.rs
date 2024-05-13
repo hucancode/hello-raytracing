@@ -36,13 +36,13 @@ impl App {
     async fn build_scene(&mut self) {
         if let Some(window) = self.window.as_ref() {
             let mut scene: Box<dyn Scene> = match self.scene_id {
-                1 => Box::new(SceneSphere::new_simple(RenderOutput::Window(window.clone())).await),
                 2 => Box::new(SceneSphere::new(RenderOutput::Window(window.clone())).await),
                 3 => Box::new(SceneTris::new_quad(RenderOutput::Window(window.clone())).await),
                 4 => Box::new(SceneTris::new_cube(RenderOutput::Window(window.clone())).await),
-                5 => Box::new(SceneTris::new_lucy(RenderOutput::Window(window.clone())).await),
-                6 => Box::new(SceneTris::new_dragon(RenderOutput::Window(window.clone())).await),
-                _ => Box::new(SceneTris::new_suzane(RenderOutput::Window(window.clone())).await),
+                5 => Box::new(SceneTris::new_suzane(RenderOutput::Window(window.clone())).await),
+                6 => Box::new(SceneTris::new_lucy(RenderOutput::Window(window.clone())).await),
+                7 => Box::new(SceneTris::new_dragon(RenderOutput::Window(window.clone())).await),
+                _ => Box::new(SceneSphere::new_simple(RenderOutput::Window(window.clone())).await),
             };
             scene.init();
             self.scene = Some(scene);
@@ -57,17 +57,14 @@ impl ApplicationHandler for App {
         pollster::block_on(self.build_scene());
     }
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
-        match cause {
-            StartCause::Poll => {
-                let time = self.start_time_stamp.elapsed().as_millis() as u32;
-                if let Some(scene) = self.scene.as_mut() {
-                    scene.set_time(time);
-                }
-                if let Some(window) = self.window.as_ref() {
-                    window.request_redraw();
-                }
-            },
-            _ => {}
+        if cause == StartCause::Poll {
+            let time = self.start_time_stamp.elapsed().as_millis() as u32;
+            if let Some(scene) = self.scene.as_mut() {
+                scene.set_time(time);
+            }
+            if let Some(window) = self.window.as_ref() {
+                window.request_redraw();
+            }
         }
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
