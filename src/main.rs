@@ -1,6 +1,6 @@
 use std::env;
-use winit::event_loop::{ControlFlow, EventLoop};
 use wgsl_toy::App;
+use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {
     env_logger::init();

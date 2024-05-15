@@ -1,11 +1,11 @@
 use crate::renderer::RenderOutput;
 use crate::scene::{Scene, SceneSphere, SceneTris};
 use rand::Rng;
+use std::sync::Arc;
+use std::{i8, time::Instant};
 use winit::application::ApplicationHandler;
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use std::sync::Arc;
-use std::{i8, time::Instant};
 use winit::window::{Window, WindowId};
 
 pub struct App {
@@ -35,14 +35,15 @@ impl App {
     }
     async fn build_scene(&mut self) {
         if let Some(window) = self.window.as_ref() {
+            let render_output = RenderOutput::Window(window.clone());
             let mut scene: Box<dyn Scene> = match self.scene_id {
-                2 => Box::new(SceneSphere::new(RenderOutput::Window(window.clone())).await),
-                3 => Box::new(SceneTris::new_quad(RenderOutput::Window(window.clone())).await),
-                4 => Box::new(SceneTris::new_cube(RenderOutput::Window(window.clone())).await),
-                5 => Box::new(SceneTris::new_suzane(RenderOutput::Window(window.clone())).await),
-                6 => Box::new(SceneTris::new_lucy(RenderOutput::Window(window.clone())).await),
-                7 => Box::new(SceneTris::new_dragon(RenderOutput::Window(window.clone())).await),
-                _ => Box::new(SceneSphere::new_simple(RenderOutput::Window(window.clone())).await),
+                2 => Box::new(SceneSphere::new(render_output).await),
+                3 => Box::new(SceneTris::new_quad(render_output).await),
+                4 => Box::new(SceneTris::new_cube(render_output).await),
+                5 => Box::new(SceneTris::new_suzane(render_output).await),
+                6 => Box::new(SceneTris::new_lucy(render_output).await),
+                7 => Box::new(SceneTris::new_dragon(render_output).await),
+                _ => Box::new(SceneSphere::new_simple(render_output).await),
             };
             scene.init();
             self.scene = Some(scene);
@@ -52,7 +53,11 @@ impl App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
+        let window = Arc::new(
+            event_loop
+                .create_window(Window::default_attributes())
+                .unwrap(),
+        );
         self.window = Some(window);
         pollster::block_on(self.build_scene());
     }
@@ -67,16 +72,20 @@ impl ApplicationHandler for App {
             }
         }
     }
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::RedrawRequested => if let Some(scene) = self.scene.as_mut() {
-                scene.draw();
-            },
-            WindowEvent::Resized(size) => if let Some(scene) = self.scene.as_mut() {
-                scene.resize(size.width, size.height);
-            },
-            _ => {}
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        if event == WindowEvent::CloseRequested {
+            event_loop.exit();
+        } else if let Some(scene) = self.scene.as_mut() {
+            match event {
+                WindowEvent::RedrawRequested => scene.draw(),
+                WindowEvent::Resized(size) => scene.resize(size.width, size.height),
+                _ => {}
+            }
         }
     }
 }

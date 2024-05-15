@@ -139,9 +139,7 @@ mod tests {
     fn globe() {
         let width = 1024;
         let height = 768;
-        let mut scene = pollster::block_on(SceneSphere::new(RenderOutput::Headless(
-            width, height,
-        )));
+        let mut scene = pollster::block_on(SceneSphere::new(RenderOutput::Headless(width, height)));
         scene.init();
         let content = render_ppm(&mut scene.renderer);
         let mut file = std::fs::File::create("globe.ppm").unwrap();
