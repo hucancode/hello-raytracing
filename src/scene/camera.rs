@@ -8,10 +8,7 @@ pub struct Camera {
     direction: Vec4,
     up: Vec4,
     right: Vec4,
-    focal_length: f32,
-    focal_blur_amount: f32,
-    fov: f32,
-    _padding: f32,
+    params: Vec4,
 }
 
 impl Camera {
@@ -26,10 +23,7 @@ impl Camera {
             direction: direction.extend(1.0),
             up: up.extend(1.0),
             right: right.extend(1.0),
-            focal_length,
-            focal_blur_amount,
-            fov,
-            _padding: 0.0,
+            params: Vec4::new(focal_length, focal_blur_amount, fov, 0.0),
         }
     }
 }

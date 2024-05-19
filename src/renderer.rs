@@ -1,28 +1,24 @@
-use bytemuck::{bytes_of, Pod, Zeroable};
-use std::{
-    borrow::Cow,
-    cmp::{max, min},
-    mem::size_of,
-    sync::Arc,
-};
+use bytemuck::{Pod, Zeroable};
+use std::{borrow::Cow, cmp::max, mem::size_of, sync::Arc};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    vertex_attr_array, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferAddress, BufferBindingType, BufferDescriptor,
+    vertex_attr_array, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, BufferAddress, BufferBindingType, BufferDescriptor,
     BufferUsages, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, FragmentState,
-    IndexFormat, Instance, Limits, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor,
-    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, StoreOp, Surface, SurfaceConfiguration, TextureViewDescriptor,
+    IndexFormat, Instance, Limits, LoadOp, MultisampleState, Operations,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface,
+    SurfaceConfiguration, Texture, TextureDescriptor, TextureFormat, TextureViewDescriptor,
     VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::window::Window;
 
-use crate::scene::{Camera, Scene, Sphere};
+use crate::scene::Camera;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct Vertex {
+struct Vertex {
     position: [f32; 4],
 }
 impl Vertex {
@@ -49,149 +45,180 @@ const VERTICES: &[Vertex] = &[
     },
 ];
 const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
-const MAX_IMAGE_BUFFER_SIZE: u32 = 4096 * 4096;
-const MAX_OBJECT_IN_SCENE: u64 = 100;
+const MAX_IMAGE_BUFFER_SIZE: usize = 4096 * 2048;
+
+pub struct Buffers {
+    pub buffers: Vec<wgpu::Buffer>,
+    pub group: wgpu::BindGroup,
+}
+
+pub enum RenderOutput {
+    Window(Arc<Window>),
+    Headless(u32, u32),
+}
+
+pub enum RenderTarget {
+    Surface(Surface<'static>),
+    Texture(Texture),
+}
 
 pub struct Renderer {
-    device: Device,
-    surface: Surface<'static>,
-    queue: Queue,
+    pub device: Device,
+    pub queue: Queue,
+    pub target: RenderTarget,
+    pub config: SurfaceConfiguration,
+    pub buffers: Vec<Buffers>,
+    pub frame_count: u32,
     render_pipeline: RenderPipeline,
-    config: SurfaceConfiguration,
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
-    resolution_buffer: Buffer,
-    frame_count_buffer: Buffer,
-    time_buffer: Buffer,
-    scene_object_buffer: Buffer,
-    camera_buffer: Buffer,
-    bind_group_global_input: BindGroup,
-    bind_group_scene: BindGroup,
-    frame_count: u32,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
 }
 impl Renderer {
-    pub async fn new(window: Arc<Window>) -> Self {
-        let mut size = window.inner_size();
-        size.width = size.width.max(1);
-        size.height = size.height.max(1);
+    pub async fn new(
+        output: RenderOutput,
+        custom_buffers: Vec<(BufferBindingType, u64)>,
+        shader_source: &str,
+    ) -> Self {
         let instance = Instance::default();
-        let surface = instance.create_surface(window).unwrap();
-        let adapter = instance
-            .request_adapter(&RequestAdapterOptions {
-                compatible_surface: Some(&surface),
-                ..Default::default()
-            })
-            .await
-            .expect("Failed to find an appropriate adapter");
-        let mut limits = Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
-        let max_storage_buffer_size = 256 << 20;
-        limits.max_buffer_size = max(limits.max_buffer_size, max_storage_buffer_size as u64);
-        limits.max_storage_buffer_binding_size = max_storage_buffer_size;
-        limits.max_storage_buffers_per_shader_stage = 4;
-        let (device, queue) = adapter
-            .request_device(
-                &DeviceDescriptor {
-                    required_limits: limits,
-                    ..Default::default()
-                },
-                None,
-            )
-            .await
-            .expect("Failed to create device");
+        let (device, queue, config, target) = match output {
+            RenderOutput::Window(window) => {
+                let mut size = window.inner_size();
+                size.width = size.width.max(1);
+                size.height = size.height.max(1);
+                let surface = instance.create_surface(window).unwrap();
+                let adapter = instance
+                    .request_adapter(&RequestAdapterOptions {
+                        compatible_surface: Some(&surface),
+                        ..Default::default()
+                    })
+                    .await
+                    .expect("Failed to find an appropriate adapter");
+                let config = surface
+                    .get_default_config(&adapter, size.width, size.height)
+                    .unwrap();
+                let mut limits =
+                    Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+                let max_storage_buffer_size = 256 << 20;
+                limits.max_buffer_size =
+                    max(limits.max_buffer_size, max_storage_buffer_size as u64);
+                limits.max_storage_buffer_binding_size = max_storage_buffer_size;
+                limits.max_storage_buffers_per_shader_stage = 4;
+                let (device, queue) = adapter
+                    .request_device(
+                        &DeviceDescriptor {
+                            required_limits: limits,
+                            ..Default::default()
+                        },
+                        None,
+                    )
+                    .await
+                    .expect("Failed to create device");
+                surface.configure(&device, &config);
+                (device, queue, config, RenderTarget::Surface(surface))
+            }
+            RenderOutput::Headless(width, height) => {
+                let adapter = instance
+                    .request_adapter(&RequestAdapterOptions::default())
+                    .await
+                    .expect("Failed to find an appropriate adapter");
+                let config = SurfaceConfiguration {
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    format: TextureFormat::Rgba8UnormSrgb,
+                    width,
+                    height,
+                    desired_maximum_frame_latency: 1,
+                    alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                    view_formats: vec![TextureFormat::Rgba8UnormSrgb],
+                    present_mode: wgpu::PresentMode::Mailbox,
+                };
+                let mut limits =
+                    Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+                let max_storage_buffer_size = 256 << 20;
+                limits.max_buffer_size =
+                    max(limits.max_buffer_size, max_storage_buffer_size as u64);
+                limits.max_storage_buffer_binding_size = max_storage_buffer_size;
+                limits.max_storage_buffers_per_shader_stage = 4;
+                let (device, queue) = adapter
+                    .request_device(
+                        &DeviceDescriptor {
+                            required_limits: limits,
+                            ..Default::default()
+                        },
+                        None,
+                    )
+                    .await
+                    .expect("Failed to create device");
+                let texture = device.create_texture(&TextureDescriptor {
+                    label: None,
+                    size: wgpu::Extent3d {
+                        width: config.width,
+                        height: config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    view_formats: &config.view_formats,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                });
+                (device, queue, config, RenderTarget::Texture(texture))
+            }
+        };
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
-            source: ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
+            source: ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
         });
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&VERTICES),
+            contents: bytemuck::cast_slice(VERTICES),
             usage: BufferUsages::VERTEX,
         });
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&INDICES),
+            contents: bytemuck::cast_slice(INDICES),
             usage: BufferUsages::INDEX,
         });
-        let bind_group_layout_global_input =
-            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: None,
-                entries: &[
-                    BindGroupLayoutEntry {
-                        binding: 0, // resolution
+        let builtin_buffer = vec![
+            (BufferBindingType::Uniform, 2 * size_of::<u32>() as u64), // resolution
+            (BufferBindingType::Uniform, size_of::<u32>() as u64),     // frame count
+            (BufferBindingType::Uniform, size_of::<u32>() as u64),     // time
+            (
+                BufferBindingType::Storage { read_only: false },
+                (MAX_IMAGE_BUFFER_SIZE * size_of::<u32>()) as u64,
+            ), // image data
+            (BufferBindingType::Uniform, size_of::<Camera>() as u64),  // camera
+        ];
+        let buffers = [builtin_buffer, custom_buffers];
+        let bind_group_layouts: Vec<wgpu::BindGroupLayout> = buffers
+            .iter()
+            .map(|group| {
+                let entries: Vec<_> = group
+                    .iter()
+                    .enumerate()
+                    .map(|(binding, &(ty, _))| BindGroupLayoutEntry {
+                        binding: binding as u32,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Buffer {
-                            ty: BufferBindingType::Uniform,
+                            ty,
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
                         count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 1, // frame count
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Buffer {
-                            ty: BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 2, // time
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Buffer {
-                            ty: BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 3, // image data
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Buffer {
-                            ty: BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-        let bind_group_layout_scene = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0, // scene objects
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 1, // camera
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
+                    })
+                    .collect();
+                device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                    label: None,
+                    entries: entries.as_slice(),
+                })
+            })
+            .collect();
+        let bind_group_layouts: Vec<_> = bind_group_layouts.iter().collect();
         println!("creating pipeline layout");
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            bind_group_layouts: &[&bind_group_layout_global_input, &bind_group_layout_scene],
+            bind_group_layouts: &bind_group_layouts,
             ..Default::default()
         });
-        let config = surface
-            .get_default_config(&adapter, size.width, size.height)
-            .unwrap();
-        surface.configure(&device, &config);
         let render_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: None,
             layout: Some(&pipeline_layout),
@@ -199,150 +226,152 @@ impl Renderer {
                 module: &shader,
                 entry_point: "vs_main",
                 buffers: &[Vertex::desc()],
+                compilation_options: PipelineCompilationOptions::default(),
             },
             fragment: Some(FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(config.format.into())],
+                compilation_options: PipelineCompilationOptions::default(),
             }),
             primitive: PrimitiveState::default(),
             depth_stencil: None,
             multisample: MultisampleState::default(),
             multiview: None,
         });
+        let buffers: Vec<_> = buffers
+            .iter()
+            .enumerate()
+            .map(|(i, group)| {
+                let buffers: Vec<_> = group
+                    .iter()
+                    .map(|&(ty, size)| {
+                        let usage = match ty {
+                            BufferBindingType::Storage { read_only: _ } => {
+                                BufferUsages::STORAGE
+                                    | BufferUsages::COPY_DST
+                                    | BufferUsages::COPY_SRC
+                            }
+                            BufferBindingType::Uniform => {
+                                BufferUsages::UNIFORM | BufferUsages::COPY_DST
+                            }
+                        };
+                        device.create_buffer(&BufferDescriptor {
+                            usage,
+                            size,
+                            mapped_at_creation: false,
+                            label: None,
+                        })
+                    })
+                    .collect();
+                let entries: Vec<_> = group
+                    .iter()
+                    .enumerate()
+                    .map(|(binding, _)| BindGroupEntry {
+                        binding: binding as u32,
+                        resource: buffers[binding].as_entire_binding(),
+                    })
+                    .collect();
+                let group = device.create_bind_group(&BindGroupDescriptor {
+                    layout: bind_group_layouts[i],
+                    entries: entries.as_slice(),
+                    label: None,
+                });
+                Buffers { buffers, group }
+            })
+            .collect();
         println!("created pipeline");
-        let resolution_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&[size.width, size.height]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-        let frame_count_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::bytes_of(&[0u32]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-        let time_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::bytes_of(&[0u32]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-        let image_data = vec![0f32; MAX_IMAGE_BUFFER_SIZE as usize];
-        let image_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            contents: bytemuck::cast_slice(image_data.as_slice()),
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            label: None,
-        });
-        let bind_group_global_input = device.create_bind_group(&BindGroupDescriptor {
-            layout: &bind_group_layout_global_input,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: resolution_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: frame_count_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 2,
-                    resource: time_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 3,
-                    resource: image_buffer.as_entire_binding(),
-                },
-            ],
-            label: None,
-        });
-        let scene_object_buffer = device.create_buffer(&BufferDescriptor {
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            size: MAX_OBJECT_IN_SCENE * size_of::<Sphere>() as BufferAddress,
-            mapped_at_creation: false,
-            label: None,
-        });
-        let camera_buffer = device.create_buffer(&BufferDescriptor {
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            size: size_of::<Camera>() as BufferAddress,
-            mapped_at_creation: false,
-            label: None,
-        });
-        let bind_group_scene = device.create_bind_group(&BindGroupDescriptor {
-            layout: &bind_group_layout_scene,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: scene_object_buffer.as_entire_binding(),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: camera_buffer.as_entire_binding(),
-                },
-            ],
-            label: None,
-        });
-
+        let buffer = &buffers[0].buffers[0];
+        queue.write_buffer(
+            buffer,
+            0,
+            bytemuck::bytes_of(&[config.width, config.height]),
+        );
         Self {
             device,
-            surface,
+            config,
+            target,
             queue,
             render_pipeline,
-            config,
             vertex_buffer,
             index_buffer,
-            resolution_buffer,
-            frame_count_buffer,
-            time_buffer,
-            scene_object_buffer,
-            camera_buffer,
-            bind_group_global_input,
-            bind_group_scene,
+            buffers,
             frame_count: 0,
         }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.config.width = max(1, width);
-        self.config.height = max(1, height);
-        self.surface.configure(&self.device, &self.config);
-        self.queue.write_buffer(
-            &self.resolution_buffer,
-            0,
-            bytemuck::bytes_of(&[width, height]),
-        );
+        match self.target {
+            RenderTarget::Surface(ref surface) => {
+                self.config.width = max(1, width);
+                self.config.height = max(1, height);
+                surface.configure(&self.device, &self.config);
+            }
+            RenderTarget::Texture(_) => {
+                self.config.width = max(1, width);
+                self.config.height = max(1, height);
+                let texture = self.device.create_texture(&TextureDescriptor {
+                    label: None,
+                    size: wgpu::Extent3d {
+                        width: self.config.width,
+                        height: self.config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    view_formats: &self.config.view_formats,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: self.config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                });
+                self.target = RenderTarget::Texture(texture);
+            }
+        }
+        let buffer = &self.buffers[0].buffers[0];
+        self.queue
+            .write_buffer(buffer, 0, bytemuck::bytes_of(&[width, height]));
         self.frame_count = 0;
     }
 
-    pub fn set_scene(&mut self, scene: &Scene) {
+    pub fn set_time(&mut self, time: u32) {
+        let buffer = &self.buffers[0].buffers[2];
         self.queue
-            .write_buffer(&self.camera_buffer, 0, bytes_of(&scene.camera));
-        let data = bytemuck::cast_slice(&scene.objects.as_slice());
-        let n = min(
-            data.len(),
-            MAX_OBJECT_IN_SCENE as usize * size_of::<Sphere>(),
-        );
+            .write_buffer(buffer, 0, bytemuck::bytes_of(&[time]));
+    }
+    pub fn set_frame_count(&mut self, n: u32) {
+        let buffer = &self.buffers[0].buffers[1];
+        self.queue.write_buffer(buffer, 0, bytemuck::bytes_of(&[n]));
+    }
+    pub fn set_camera(&mut self, camera: &Camera) {
+        let buffer = &self.buffers[0].buffers[4];
         self.queue
-            .write_buffer(&self.scene_object_buffer, 0, &data[0..n]);
+            .write_buffer(buffer, 0, bytemuck::bytes_of(camera))
     }
 
-    pub fn set_time(&mut self, time: u32) {
-        self.queue
-            .write_buffer(&self.time_buffer, 0, bytemuck::bytes_of(&[time]));
+    pub fn write_buffer(&mut self, data: &[u8], buffer: usize) {
+        let buffer = &self.buffers[1].buffers[buffer];
+        self.queue.write_buffer(buffer, 0, data)
     }
 
     pub fn draw(&mut self) {
-        self.queue.write_buffer(
-            &self.frame_count_buffer,
-            0,
-            bytemuck::bytes_of(&[self.frame_count]),
-        );
-        let frame = self
-            .surface
-            .get_current_texture()
-            .expect("Failed to acquire next swap chain texture");
-        let view = frame.texture.create_view(&TextureViewDescriptor::default());
+        self.set_frame_count(self.frame_count);
+        let frame = match &self.target {
+            RenderTarget::Surface(surface) => surface.get_current_texture(),
+            RenderTarget::Texture(_) => Err(wgpu::SurfaceError::Lost),
+        };
+        let view = match &self.target {
+            RenderTarget::Surface(_) => frame
+                .as_ref()
+                .unwrap()
+                .texture
+                .create_view(&TextureViewDescriptor::default()),
+            RenderTarget::Texture(texture) => {
+                texture.create_view(&TextureViewDescriptor::default())
+            }
+        };
         let mut encoder = self
             .device
-            .create_command_encoder(&CommandEncoderDescriptor { label: None });
+            .create_command_encoder(&CommandEncoderDescriptor::default());
         let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
             color_attachments: &[Some(RenderPassColorAttachment {
                 view: &view,
@@ -355,14 +384,17 @@ impl Renderer {
             ..Default::default()
         });
         rpass.set_pipeline(&self.render_pipeline);
-        rpass.set_bind_group(0, &self.bind_group_global_input, &[]);
-        rpass.set_bind_group(1, &self.bind_group_scene, &[]);
+        for (i, group) in self.buffers.iter().enumerate() {
+            rpass.set_bind_group(i as u32, &group.group, &[]);
+        }
         rpass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
         rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         rpass.draw_indexed(0..6, 0, 0..1);
         drop(rpass);
         self.queue.submit(Some(encoder.finish()));
-        frame.present();
+        if let Ok(frame) = frame {
+            frame.present();
+        }
         self.frame_count += 1;
     }
 }
