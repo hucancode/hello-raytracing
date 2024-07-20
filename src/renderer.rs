@@ -238,6 +238,7 @@ impl Renderer {
             depth_stencil: None,
             multisample: MultisampleState::default(),
             multiview: None,
+            cache: None,
         });
         let buffers: Vec<_> = buffers
             .iter()
