@@ -130,8 +130,8 @@ impl SceneSphere {
 
 #[cfg(test)]
 mod tests {
-    use super::super::render_ppm::render_ppm;
     use super::*;
+    use crate::scene::render_ppm;
     use crate::scene::Scene;
     use std::io::Write;
 

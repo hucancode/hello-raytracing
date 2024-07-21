@@ -203,10 +203,9 @@ impl SceneTris {
 
 #[cfg(test)]
 mod tests {
-    use crate::scene::Scene;
-
-    use super::super::render_ppm::render_ppm;
     use super::*;
+    use crate::scene::render_ppm;
+    use crate::scene::Scene;
     use std::io::Write;
 
     #[test]

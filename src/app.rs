@@ -34,20 +34,21 @@ impl App {
         self.scene_id = i;
     }
     async fn build_scene(&mut self) {
-        if let Some(window) = self.window.as_ref() {
-            let render_output = RenderOutput::Window(window.clone());
-            let mut scene: Box<dyn Scene> = match self.scene_id {
-                2 => Box::new(SceneSphere::new(render_output).await),
-                3 => Box::new(SceneTris::new_quad(render_output).await),
-                4 => Box::new(SceneTris::new_cube(render_output).await),
-                5 => Box::new(SceneTris::new_suzane(render_output).await),
-                6 => Box::new(SceneTris::new_lucy(render_output).await),
-                7 => Box::new(SceneTris::new_dragon(render_output).await),
-                _ => Box::new(SceneSphere::new_simple(render_output).await),
-            };
-            scene.init();
-            self.scene = Some(scene);
-        }
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let render_output = RenderOutput::Window(window.clone());
+        let mut scene: Box<dyn Scene> = match self.scene_id {
+            2 => Box::new(SceneSphere::new(render_output).await),
+            3 => Box::new(SceneTris::new_quad(render_output).await),
+            4 => Box::new(SceneTris::new_cube(render_output).await),
+            5 => Box::new(SceneTris::new_suzane(render_output).await),
+            6 => Box::new(SceneTris::new_lucy(render_output).await),
+            7 => Box::new(SceneTris::new_dragon(render_output).await),
+            _ => Box::new(SceneSphere::new_simple(render_output).await),
+        };
+        scene.init();
+        self.scene = Some(scene);
     }
 }
 

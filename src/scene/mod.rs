@@ -1,7 +1,6 @@
 pub mod bvh;
 mod camera;
 mod material;
-mod render_ppm;
 mod scene_sphere;
 mod scene_tris;
 mod sphere;
@@ -48,3 +47,8 @@ impl Scene for SceneSphere {
         self.renderer.set_time(time)
     }
 }
+
+#[cfg(test)]
+mod render_ppm;
+#[cfg(test)]
+pub use render_ppm::render_ppm;
