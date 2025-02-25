@@ -16,35 +16,6 @@ use winit::window::Window;
 
 use crate::scene::Camera;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct Vertex {
-    position: [f32; 4],
-}
-impl Vertex {
-    pub fn desc() -> VertexBufferLayout<'static> {
-        VertexBufferLayout {
-            array_stride: size_of::<Vertex>() as BufferAddress,
-            step_mode: VertexStepMode::Vertex,
-            attributes: &vertex_attr_array![0 => Float32x4],
-        }
-    }
-}
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [1.0, 1.0, 0.0, 1.0],
-    },
-    Vertex {
-        position: [-1.0, 1.0, 0.0, 1.0],
-    },
-    Vertex {
-        position: [-1.0, -1.0, 0.0, 1.0],
-    },
-    Vertex {
-        position: [1.0, -1.0, 0.0, 1.0],
-    },
-];
-const INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 const MAX_IMAGE_BUFFER_SIZE: usize = 4096 * 2048;
 
 pub struct Buffers {
@@ -70,8 +41,6 @@ pub struct Renderer {
     pub buffers: Vec<Buffers>,
     pub frame_count: u32,
     render_pipeline: RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
 }
 impl Renderer {
     pub async fn new(
@@ -169,16 +138,6 @@ impl Renderer {
             label: None,
             source: ShaderSource::Wgsl(Cow::Borrowed(shader_source)),
         });
-        let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: BufferUsages::INDEX,
-        });
         let builtin_buffer = vec![
             (BufferBindingType::Uniform, 2 * size_of::<u32>() as u64), // resolution
             (BufferBindingType::Uniform, size_of::<u32>() as u64),     // frame count
@@ -225,7 +184,7 @@ impl Renderer {
             vertex: VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::desc()],
+                buffers: &[],
                 compilation_options: PipelineCompilationOptions::default(),
             },
             fragment: Some(FragmentState {
@@ -294,8 +253,6 @@ impl Renderer {
             target,
             queue,
             render_pipeline,
-            vertex_buffer,
-            index_buffer,
             buffers,
             frame_count: 0,
         }
@@ -388,9 +345,7 @@ impl Renderer {
         for (i, group) in self.buffers.iter().enumerate() {
             rpass.set_bind_group(i as u32, &group.group, &[]);
         }
-        rpass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
-        rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        rpass.draw_indexed(0..6, 0, 0..1);
+        rpass.draw(0..6, 0..1);
         drop(rpass);
         self.queue.submit(Some(encoder.finish()));
         if let Ok(frame) = frame {

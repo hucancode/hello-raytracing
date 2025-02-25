@@ -61,8 +61,27 @@ struct Material {
 }
 
 @vertex
-fn vs_main(@location(0) position: vec4f) -> @builtin(position) vec4f {
-  return position;
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
+  // 2-triangles screen space
+  let a = vec4f(-1.0, -1.0, 0.0, 1.0);
+  let b = vec4f(1.0, -1.0, 0.0, 1.0);
+  let c = vec4f(1.0, 1.0, 0.0, 1.0);
+  let d = vec4f(-1.0, 1.0, 0.0, 1.0);
+  switch (vertexIndex) {
+    case 0u, 3u: {
+      return a;
+    }
+    case 1u: {
+      return b;
+    }
+    case 2u, 4u: {
+      return c;
+    }
+    case 5u, default: {
+      return d;
+    }
+  }
+  return vec4f(0.0, 0.0, 0.0, 1.0);
 }
 
 fn rng_int(state: ptr<function, u32>) {
