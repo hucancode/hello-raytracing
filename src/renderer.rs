@@ -1,16 +1,14 @@
-use bytemuck::{Pod, Zeroable};
 use std::{borrow::Cow, cmp::max, mem::size_of, sync::Arc};
 use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    vertex_attr_array, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, BufferAddress, BufferBindingType, BufferDescriptor,
+    BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, BufferBindingType, BufferDescriptor,
     BufferUsages, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, FragmentState,
-    IndexFormat, Instance, Limits, LoadOp, MultisampleState, Operations,
+    Instance, Limits, LoadOp, MultisampleState, Operations,
     PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, Queue,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
     RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface,
     SurfaceConfiguration, Texture, TextureDescriptor, TextureFormat, TextureViewDescriptor,
-    VertexBufferLayout, VertexState, VertexStepMode,
+    VertexState,
 };
 use winit::window::Window;
 
@@ -42,6 +40,7 @@ pub struct Renderer {
     pub buffers: Vec<Buffers>,
     pub frame_count: u32,
     render_pipeline: RenderPipeline,
+    current_frame: Option<wgpu::SurfaceTexture>,
 }
 impl Renderer {
     pub async fn new(
@@ -79,7 +78,6 @@ impl Renderer {
                             required_limits: limits,
                             ..Default::default()
                         },
-                        None,
                     )
                     .await
                     .expect("Failed to create device");
@@ -114,7 +112,6 @@ impl Renderer {
                             required_limits: limits,
                             ..Default::default()
                         },
-                        None,
                     )
                     .await
                     .expect("Failed to create device");
@@ -184,13 +181,13 @@ impl Renderer {
             layout: Some(&pipeline_layout),
             vertex: VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: PipelineCompilationOptions::default(),
             },
             fragment: Some(FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(config.format.into())],
                 compilation_options: PipelineCompilationOptions::default(),
             }),
@@ -256,6 +253,7 @@ impl Renderer {
             render_pipeline,
             buffers,
             frame_count: 0,
+            current_frame: None,
         }
     }
 
@@ -323,27 +321,36 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) {
+        let (mut encoder, view) = self.begin_frame();
+        self.render_scene(&mut encoder, &view);
+        self.end_frame(encoder, view);
+    }
+    
+    pub fn begin_frame(&mut self) -> (wgpu::CommandEncoder, wgpu::TextureView) {
         self.set_frame_count(self.frame_count);
-        let frame = match &self.target {
-            RenderTarget::Surface(surface) => surface.get_current_texture(),
-            RenderTarget::Texture(_) => Err(wgpu::SurfaceError::Lost),
-        };
+        let encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor::default());
+        
         let view = match &self.target {
-            RenderTarget::Surface(_) => frame
-                .as_ref()
-                .unwrap()
-                .texture
-                .create_view(&TextureViewDescriptor::default()),
+            RenderTarget::Surface(surface) => {
+                let frame = surface.get_current_texture().unwrap();
+                let view = frame.texture.create_view(&TextureViewDescriptor::default());
+                self.current_frame = Some(frame);
+                view
+            }
             RenderTarget::Texture(texture) => {
                 texture.create_view(&TextureViewDescriptor::default())
             }
         };
-        let mut encoder = self
-            .device
-            .create_command_encoder(&CommandEncoderDescriptor::default());
+        
+        (encoder, view)
+    }
+    
+    pub fn render_scene(&mut self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
             color_attachments: &[Some(RenderPassColorAttachment {
-                view: &view,
+                view,
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Clear(Color::BLACK),
@@ -357,11 +364,16 @@ impl Renderer {
             rpass.set_bind_group(i as u32, &group.group, &[]);
         }
         rpass.draw(0..6, 0..1);
-        drop(rpass);
+    }
+    
+    pub fn end_frame(&mut self, encoder: wgpu::CommandEncoder, _view: wgpu::TextureView) {
         self.queue.submit(Some(encoder.finish()));
-        if let Ok(frame) = frame {
+        
+        // Present the frame we got in begin_frame
+        if let Some(frame) = self.current_frame.take() {
             frame.present();
         }
+        
         self.frame_count += 1;
     }
 }

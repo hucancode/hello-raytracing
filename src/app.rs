@@ -1,11 +1,12 @@
 use crate::camera_controller::OrbitCamera;
+use crate::gui::GuiState;
 use crate::renderer::RenderOutput;
 use crate::scene::{Scene, SceneSphere, SceneTris};
 use rand::Rng;
 use std::sync::Arc;
 use std::{i8, time::Instant};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
+use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
@@ -15,6 +16,7 @@ pub struct App {
     scene_id: i8,
     start_time_stamp: Instant,
     camera: Option<OrbitCamera>,
+    gui: Option<GuiState>,
 }
 
 impl Default for App {
@@ -25,6 +27,7 @@ impl Default for App {
             scene: None,
             window: None,
             camera: None,
+            gui: None,
         }
     }
 }
@@ -55,6 +58,24 @@ impl App {
         let size = window.inner_size();
         let aspect_ratio = size.width as f32 / size.height as f32;
         self.camera = Some(OrbitCamera::new(aspect_ratio));
+        
+        // Initialize GUI with camera values
+        if let (Some(scene), Some(camera)) = (&self.scene, &self.camera) {
+            let mut gui = GuiState::new(
+                scene.get_device(),
+                scene.get_format(),
+                window,
+                1, // samples
+            );
+            
+            // Sync GUI values with camera
+            gui.camera_radius = camera.radius;
+            gui.camera_theta = camera.theta.to_degrees();
+            gui.camera_phi = camera.phi.to_degrees();
+            gui.fov = camera.fov.to_degrees();
+            
+            self.gui = Some(gui);
+        }
     }
 }
 
@@ -87,40 +108,84 @@ impl ApplicationHandler for App {
     ) {
         if event == WindowEvent::CloseRequested {
             event_loop.exit();
-        } else if let Some(scene) = self.scene.as_mut() {
-            match event {
-                WindowEvent::RedrawRequested => {
-                    if let Some(camera) = self.camera.as_mut() {
-                        if camera.has_moved {
-                            scene.reset_frame_count();
-                            camera.reset_movement_flag();
+            return;
+        }
+        
+        // Handle GUI events first
+        let mut gui_consumed = false;
+        if let (Some(gui), Some(window)) = (&mut self.gui, &self.window) {
+            gui_consumed = gui.handle_event(window, &event);
+        }
+        
+        // If GUI didn't consume the event, handle it normally
+        if !gui_consumed {
+            if let Some(scene) = self.scene.as_mut() {
+                match event {
+                    WindowEvent::RedrawRequested => {
+                        // Update camera from GUI values
+                        if let (Some(camera), Some(gui)) = (&mut self.camera, &self.gui) {
+                            // Update camera from GUI sliders
+                            camera.radius = gui.camera_radius;
+                            camera.theta = gui.camera_theta.to_radians();
+                            camera.phi = gui.camera_phi.to_radians();
+                            camera.fov = gui.fov;
+                            camera.update_position();
+                            
+                            if camera.has_moved {
+                                scene.reset_frame_count();
+                                camera.reset_movement_flag();
+                            }
+                            scene.update_camera(camera.to_uniform());
                         }
-                        scene.update_camera(camera.to_uniform());
+                        
+                        // Draw scene with or without GUI
+                        if let (Some(gui), Some(window)) = (&mut self.gui, &self.window) {
+                            scene.draw_with_gui(gui, window);
+                        } else {
+                            scene.draw();
+                        }
                     }
-                    scene.draw();
-                }
-                WindowEvent::Resized(size) => {
-                    scene.resize(size.width, size.height);
-                    if let Some(camera) = self.camera.as_mut() {
-                        camera.resize(size.width, size.height);
+                    WindowEvent::Resized(size) => {
+                        scene.resize(size.width, size.height);
+                        if let Some(camera) = self.camera.as_mut() {
+                            camera.resize(size.width, size.height);
+                        }
                     }
-                }
-                WindowEvent::MouseInput { state, button, .. } => {
-                    if let Some(camera) = self.camera.as_mut() {
-                        camera.handle_mouse_input(state, button);
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        if let Some(camera) = self.camera.as_mut() {
+                            camera.handle_mouse_input(state, button);
+                            // Update GUI values when camera moves
+                            if let Some(gui) = self.gui.as_mut() {
+                                gui.camera_radius = camera.radius;
+                                gui.camera_theta = camera.theta.to_degrees();
+                                gui.camera_phi = camera.phi.to_degrees();
+                            }
+                        }
                     }
-                }
-                WindowEvent::CursorMoved { position, .. } => {
-                    if let Some(camera) = self.camera.as_mut() {
-                        camera.handle_mouse_motion(position);
+                    WindowEvent::CursorMoved { position, .. } => {
+                        if let Some(camera) = self.camera.as_mut() {
+                            camera.handle_mouse_motion(position);
+                            // Update GUI values when camera moves
+                            if let Some(gui) = self.gui.as_mut() {
+                                gui.camera_radius = camera.radius;
+                                gui.camera_theta = camera.theta.to_degrees();
+                                gui.camera_phi = camera.phi.to_degrees();
+                            }
+                        }
                     }
-                }
-                WindowEvent::MouseWheel { delta, .. } => {
-                    if let Some(camera) = self.camera.as_mut() {
-                        camera.handle_scroll(delta);
+                    WindowEvent::MouseWheel { delta, .. } => {
+                        if let Some(camera) = self.camera.as_mut() {
+                            camera.handle_scroll(delta);
+                            // Update GUI values when camera moves
+                            if let Some(gui) = self.gui.as_mut() {
+                                gui.camera_radius = camera.radius;
+                                gui.camera_theta = camera.theta.to_degrees();
+                                gui.camera_phi = camera.phi.to_degrees();
+                            }
+                        }
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }

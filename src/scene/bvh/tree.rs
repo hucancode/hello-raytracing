@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use glam::{Vec3, Vec4Swizzles};
+use glam::Vec4Swizzles;
 use std::cmp::Ordering;
 
 use crate::geometry::Mesh;

@@ -56,7 +56,7 @@ impl OrbitCamera {
         camera
     }
     
-    fn update_position(&mut self) {
+    pub fn update_position(&mut self) {
         // Clamp phi to avoid flipping
         self.phi = self.phi.clamp(0.1, std::f32::consts::PI - 0.1);
         
