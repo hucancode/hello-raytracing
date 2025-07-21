@@ -8,12 +8,15 @@ pub use camera::Camera;
 pub use material::Material;
 pub use scene_sphere::SceneSphere;
 pub use scene_tris::SceneTris;
+use crate::camera_controller::CameraUniform;
 
 pub trait Scene {
     fn init(&mut self);
     fn draw(&mut self);
     fn set_time(&mut self, time: u32);
     fn resize(&mut self, width: u32, height: u32);
+    fn update_camera(&mut self, camera: CameraUniform);
+    fn reset_frame_count(&mut self);
 }
 
 impl Scene for SceneTris {
@@ -30,6 +33,12 @@ impl Scene for SceneTris {
     fn set_time(&mut self, time: u32) {
         self.renderer.set_time(time)
     }
+    fn update_camera(&mut self, camera: CameraUniform) {
+        self.renderer.update_camera_uniform(camera)
+    }
+    fn reset_frame_count(&mut self) {
+        self.renderer.reset_frame_count()
+    }
 }
 
 impl Scene for SceneSphere {
@@ -45,6 +54,12 @@ impl Scene for SceneSphere {
     }
     fn set_time(&mut self, time: u32) {
         self.renderer.set_time(time)
+    }
+    fn update_camera(&mut self, camera: CameraUniform) {
+        self.renderer.update_camera_uniform(camera)
+    }
+    fn reset_frame_count(&mut self) {
+        self.renderer.reset_frame_count()
     }
 }
 

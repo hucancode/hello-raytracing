@@ -1,11 +1,11 @@
-use glam::{Vec4, Vec4Swizzles};
+use std::collections::VecDeque;
+use glam::{Vec3, Vec4Swizzles};
+use std::cmp::Ordering;
 
 use crate::geometry::Mesh;
 use crate::scene::bvh::Node;
 use crate::scene::bvh::Triangle;
 use crate::scene::material::Material;
-use std::cmp::{min, Ordering};
-use std::collections::VecDeque;
 
 #[derive(Debug, Default)]
 pub struct Tree {
@@ -32,6 +32,7 @@ impl Tree {
             sizes: [0, 0],
         }
     }
+
     pub fn build(&mut self) {
         let mut q = VecDeque::new();
         let m = self.triangles.len();
@@ -39,20 +40,20 @@ impl Tree {
         q.push_back((0, n, 0));
         while let Some((i, j, depth)) = q.pop_front() {
             let l = i;
-            let r = min(j, m);
+            let r = std::cmp::min(j, m);
             if l + 1 >= r {
                 continue;
             }
-            // println!("traverse {i}~{j} depth {depth}");
             self.triangles[l..r].sort_by(|a, b| {
                 a.custom[depth % 3]
                     .partial_cmp(&b.custom[depth % 3])
                     .unwrap_or(Ordering::Equal)
             });
-            let m = (i + j) / 2;
-            q.push_back((i, m, depth + 1));
-            q.push_back((m, j, depth + 1));
+            let mid = (i + j) / 2;
+            q.push_back((i, mid, depth + 1));
+            q.push_back((mid, j, depth + 1));
         }
+
         self.nodes = vec![Node::default(); n];
         for (i, t) in self.triangles.iter().enumerate() {
             let mut j = (i + n) / 2;
@@ -69,13 +70,14 @@ impl Tree {
         }
         self.sizes = [n as u32, m as u32];
     }
+
     pub fn add_mesh(&mut self, mesh: Mesh) {
         let material = self.materials.len() as u32;
         self.materials.push(mesh.material);
         self.triangles.extend(mesh.indices.chunks_exact(3).map(|t| {
-            let a = Vec4::from_array(mesh.vertices[t[0] as usize].position);
-            let b = Vec4::from_array(mesh.vertices[t[1] as usize].position);
-            let c = Vec4::from_array(mesh.vertices[t[2] as usize].position);
+            let a = glam::Vec4::from_array(mesh.vertices[t[0] as usize].position);
+            let b = glam::Vec4::from_array(mesh.vertices[t[1] as usize].position);
+            let c = glam::Vec4::from_array(mesh.vertices[t[2] as usize].position);
             let center3x = (a + b + c).xyz();
             Triangle {
                 a,

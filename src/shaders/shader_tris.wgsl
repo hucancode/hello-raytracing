@@ -148,16 +148,14 @@ fn make_ray(uv: vec2f, state: ptr<function, u32>) -> Ray {
 }
 
 fn intersect_node(r: Ray, node: Node) -> bool {
-  let size = (node.bound_max - node.bound_min).xyz;
-  let ro = r.origin - node.bound_min.xyz;
-  let d = 1.0/r.direction;
-  let n = d*ro;
-  let k = abs(d)*size;
-  let t1 = -k - n;
-  let t2 = k - n;
-  let tmax = max(max(t1.x, t1.y), t1.z);
-  let tmin = min(min(t2.x, t2.y), t2.z);
-  return tmax <= tmin && tmin >= 0.0;
+  let inv_d = 1.0 / r.direction;
+  let t0 = (node.bound_min.xyz - r.origin) * inv_d;
+  let t1 = (node.bound_max.xyz - r.origin) * inv_d;
+  let tmin = min(t0, t1);
+  let tmax = max(t0, t1);
+  let tmin_final = max(max(tmin.x, tmin.y), tmin.z);
+  let tmax_final = min(min(tmax.x, tmax.y), tmax.z);
+  return tmin_final <= tmax_final && tmax_final >= 0.0;
 }
 
 fn intersect_triangle(ray: Ray, i: u32, ret: ptr<function, HitRecord>) {
@@ -166,25 +164,36 @@ fn intersect_triangle(ray: Ray, i: u32, ret: ptr<function, HitRecord>) {
   let c = triangles[i].c.xyz;
   let normal = triangles[i].normal;
   let material = triangles[i].material;
-  let ab = b - a;
-  let ac = c - a;
-  let p = cross(ray.direction, ac);
-  let det = dot(ab, p);
+  // Moller-Trumbore intersection algorithm
+  let edge1 = b - a;
+  let edge2 = c - a;
+  let h = cross(ray.direction, edge2);
+  let det = dot(edge1, h);
+  // Early exit for parallel rays
   if abs(det) < EPSILON {
     return;
   }
-  let ao = ray.origin - a;
-  let inv_det = 1/det;
-  let aoxab = cross(ao, ab);
-  let u = inv_det * dot(ao, p);
-  let v = inv_det * dot(ray.direction, aoxab);
-  if (u < 0 || v < 0 || u + v > 1) {
+
+  let inv_det = 1.0 / det;
+  let s = ray.origin - a;
+  let u = inv_det * dot(s, h);
+  // Early exit for out-of-bounds U
+  if u < 0.0 || u > 1.0 {
     return;
   }
-  let t = inv_det * dot(ac, aoxab);
-  if (t < EPSILON || t > (*ret).t) {
+
+  let q = cross(s, edge1);
+  let v = inv_det * dot(ray.direction, q);
+  // Early exit for out-of-bounds V
+  if v < 0.0 || u + v > 1.0 {
     return;
   }
+  let t = inv_det * dot(edge2, q);
+  // Early exit for negative T or T beyond current hit
+  if t < EPSILON || t >= (*ret).t {
+    return;
+  }
+
   (*ret).point = point_on_ray(ray, t);
   (*ret).normal = normal;
   (*ret).t = t;
@@ -262,27 +271,32 @@ fn intersect_all_node(ray: Ray) -> HitRecord {
     let m = bvh_tree_size.y;
     var ret = EMPTY_HIT_RECORD;
     var step = 0;
-    while step < 1000 {
-      step++;
-      if i < n && intersect_node(ray, nodes[i]) {
-        i *= 2u; // go to first children
-        continue;
-      }
-      if i >= n {
-        let j = i - n;
-        if j >= m {
-          break;
+    while step < 600 {
+        step++;
+
+        if i < n && intersect_node(ray, nodes[i]) {
+            i *= 2u; // go to first child
+            continue;
         }
-        intersect_triangle(ray, j, &ret);
-      }
-      while (i&1u) == 1u {
-        i /= 2u; // return to parent
-      }
-      if i == 0u {
-        break;
-      }
-      i++; // go to next sibling
+
+        if i >= n {
+            let j = i - n;
+            if j >= m {
+                break;
+            }
+            intersect_triangle(ray, j, &ret);
+        }
+
+        // Move to next sibling or parent
+        while (i & 1u) == 1u {
+            i /= 2u; // return to parent
+        }
+        if i == 0u {
+            break;
+        }
+        i++; // go to next sibling
     }
+
     return ret;
 }
 

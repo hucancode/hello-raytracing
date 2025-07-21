@@ -1,10 +1,11 @@
+use crate::camera_controller::OrbitCamera;
 use crate::renderer::RenderOutput;
 use crate::scene::{Scene, SceneSphere, SceneTris};
 use rand::Rng;
 use std::sync::Arc;
 use std::{i8, time::Instant};
 use winit::application::ApplicationHandler;
-use winit::event::{StartCause, WindowEvent};
+use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
@@ -13,6 +14,7 @@ pub struct App {
     window: Option<Arc<Window>>,
     scene_id: i8,
     start_time_stamp: Instant,
+    camera: Option<OrbitCamera>,
 }
 
 impl Default for App {
@@ -22,6 +24,7 @@ impl Default for App {
             scene_id: 0,
             scene: None,
             window: None,
+            camera: None,
         }
     }
 }
@@ -49,6 +52,9 @@ impl App {
         };
         scene.init();
         self.scene = Some(scene);
+        let size = window.inner_size();
+        let aspect_ratio = size.width as f32 / size.height as f32;
+        self.camera = Some(OrbitCamera::new(aspect_ratio));
     }
 }
 
@@ -83,8 +89,37 @@ impl ApplicationHandler for App {
             event_loop.exit();
         } else if let Some(scene) = self.scene.as_mut() {
             match event {
-                WindowEvent::RedrawRequested => scene.draw(),
-                WindowEvent::Resized(size) => scene.resize(size.width, size.height),
+                WindowEvent::RedrawRequested => {
+                    if let Some(camera) = self.camera.as_mut() {
+                        if camera.has_moved {
+                            scene.reset_frame_count();
+                            camera.reset_movement_flag();
+                        }
+                        scene.update_camera(camera.to_uniform());
+                    }
+                    scene.draw();
+                }
+                WindowEvent::Resized(size) => {
+                    scene.resize(size.width, size.height);
+                    if let Some(camera) = self.camera.as_mut() {
+                        camera.resize(size.width, size.height);
+                    }
+                }
+                WindowEvent::MouseInput { state, button, .. } => {
+                    if let Some(camera) = self.camera.as_mut() {
+                        camera.handle_mouse_input(state, button);
+                    }
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    if let Some(camera) = self.camera.as_mut() {
+                        camera.handle_mouse_motion(position);
+                    }
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    if let Some(camera) = self.camera.as_mut() {
+                        camera.handle_scroll(delta);
+                    }
+                }
                 _ => {}
             }
         }

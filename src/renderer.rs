@@ -15,6 +15,7 @@ use wgpu::{
 use winit::window::Window;
 
 use crate::scene::Camera;
+use crate::camera_controller::CameraUniform;
 
 const MAX_IMAGE_BUFFER_SIZE: usize = 4096 * 2048;
 
@@ -304,6 +305,16 @@ impl Renderer {
         let buffer = &self.buffers[0].buffers[4];
         self.queue
             .write_buffer(buffer, 0, bytemuck::bytes_of(camera))
+    }
+    
+    pub fn update_camera_uniform(&mut self, camera: CameraUniform) {
+        let buffer = &self.buffers[0].buffers[4];
+        self.queue
+            .write_buffer(buffer, 0, bytemuck::bytes_of(&camera))
+    }
+    
+    pub fn reset_frame_count(&mut self) {
+        self.frame_count = 0;
     }
 
     pub fn write_buffer(&mut self, data: &[u8], buffer: usize) {
