@@ -8,6 +8,7 @@ pub use camera::Camera;
 pub use material::Material;
 pub use scene_sphere::SceneSphere;
 pub use scene_tris::SceneTris;
+pub use sphere::Sphere;
 use crate::camera_controller::CameraUniform;
 
 pub trait Scene {
@@ -105,7 +106,5 @@ impl Scene for SceneSphere {
     }
 }
 
-#[cfg(test)]
 mod render_ppm;
-#[cfg(test)]
 pub use render_ppm::render_ppm;

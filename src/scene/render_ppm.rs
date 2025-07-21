@@ -26,7 +26,7 @@ fn copy_image_buffer(renderer: &mut Renderer) -> Vec<u8> {
     buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
         tx.send(result.is_ok()).unwrap()
     });
-    device.poll(wgpu::Maintain::Wait);
+    device.poll(wgpu::MaintainBase::Wait);
     let ret = if rx.recv().unwrap_or(false) {
         buffer_slice.get_mapped_range().to_vec()
     } else {
@@ -38,7 +38,7 @@ fn copy_image_buffer(renderer: &mut Renderer) -> Vec<u8> {
 pub fn render_ppm(renderer: &mut Renderer) -> String {
     let width = renderer.config.width;
     let height = renderer.config.height;
-    renderer.draw();
+    // Don't draw an extra frame here - assume frames have already been rendered
     let data = copy_image_buffer(renderer);
     let mut ret = String::new();
     let data = bytemuck::cast_slice::<u8, f32>(data.as_ref());

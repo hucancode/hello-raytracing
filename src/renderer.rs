@@ -245,6 +245,17 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&[config.width, config.height]),
         );
+        
+        // Initialize image buffer with zeros
+        let image_buffer_size = (config.width * config.height * 3) as usize;
+        let zeros = vec![0.0f32; image_buffer_size];
+        let image_buffer = &buffers[0].buffers[3];
+        queue.write_buffer(
+            image_buffer,
+            0,
+            bytemuck::cast_slice(&zeros),
+        );
+        
         Self {
             device,
             config,
@@ -287,6 +298,17 @@ impl Renderer {
         let buffer = &self.buffers[0].buffers[0];
         self.queue
             .write_buffer(buffer, 0, bytemuck::bytes_of(&[width, height]));
+        
+        // Clear image buffer when resizing
+        let image_buffer_size = (width * height * 3) as usize;
+        let zeros = vec![0.0f32; image_buffer_size];
+        let image_buffer = &self.buffers[0].buffers[3];
+        self.queue.write_buffer(
+            image_buffer,
+            0,
+            bytemuck::cast_slice(&zeros),
+        );
+        
         self.frame_count = 0;
     }
 
@@ -313,6 +335,16 @@ impl Renderer {
     
     pub fn reset_frame_count(&mut self) {
         self.frame_count = 0;
+        
+        // Clear image buffer when resetting frame count
+        let image_buffer_size = (self.config.width * self.config.height * 3) as usize;
+        let zeros = vec![0.0f32; image_buffer_size];
+        let image_buffer = &self.buffers[0].buffers[3];
+        self.queue.write_buffer(
+            image_buffer,
+            0,
+            bytemuck::cast_slice(&zeros),
+        );
     }
 
     pub fn write_buffer(&mut self, data: &[u8], buffer: usize) {
